@@ -77,6 +77,9 @@ export interface DbFarm {
 // Frontend-facing types (mapped from DB rows)
 // ──────────────────────────────────────────────
 
+/** Contorno en GeoJSON [longitud, latitud] cuando exista en backend. */
+export type LotPolygon = [number, number][]
+
 export interface Lot {
   id: string
   name: string
@@ -86,6 +89,7 @@ export interface Lot {
   ndvi: number
   predictedYield: number | null
   lastUpdated: string
+  polygon?: LotPolygon
 }
 
 export interface UserProfile {
