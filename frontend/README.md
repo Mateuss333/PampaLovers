@@ -18,6 +18,15 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+## Vista Satelital (mapa)
+
+La ruta `/satelite` usa [Leaflet](https://leafletjs.com/) con teselas públicas. **No hace falta ninguna variable de entorno** para el mapa (demo hackathon).
+
+- **Calles:** datos © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
+- **Satelital (imagen):** teselas © Esri, Maxar, Earthstar Geographics y la comunidad GIS (uso razonable; revisá términos del proveedor si escalás tráfico).
+
+Leaflet se carga en el cliente con import dinámico dentro de `components/satellite-map.tsx`.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More
