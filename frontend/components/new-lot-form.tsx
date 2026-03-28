@@ -51,7 +51,6 @@ export interface NewLotFormData {
   irrigationType: string
   fertilizerType: string
   pesticideUsageMl: string
-  sowingMonth: string
   harvestMonth: string
   cropDiseaseStatus: string
 }
@@ -91,7 +90,6 @@ function emptyForm(): NewLotFormData {
     irrigationType: "",
     fertilizerType: "",
     pesticideUsageMl: "",
-    sowingMonth: "",
     harvestMonth: "",
     cropDiseaseStatus: "",
   }
@@ -166,7 +164,6 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
       const descriptionParts = [
         formData.year && `Campaña ${formData.year}`,
         formData.sowingDate && `Siembra ${formData.sowingDate}`,
-        formData.sowingMonth && `Siembra: ${formData.sowingMonth}`,
         formData.harvestMonth && `Cosecha: ${formData.harvestMonth}`,
       ].filter(Boolean)
 
@@ -494,54 +491,28 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="sowingMonth" className="text-foreground">
-                  Mes de Siembra
-                </Label>
-                <Select
-                  value={formData.sowingMonth}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, sowingMonth: value })
-                  }
-                  disabled={submitting}
-                >
-                  <SelectTrigger id="sowingMonth" className="bg-background">
-                    <SelectValue placeholder="Seleccionar" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {months.map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {m}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="harvestMonth" className="text-foreground">
-                  Mes de Cosecha
-                </Label>
-                <Select
-                  value={formData.harvestMonth}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, harvestMonth: value })
-                  }
-                  disabled={submitting}
-                >
-                  <SelectTrigger id="harvestMonth" className="bg-background">
-                    <SelectValue placeholder="Seleccionar" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {months.map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {m}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="max-w-md space-y-2">
+              <Label htmlFor="harvestMonth" className="text-foreground">
+                Mes de Cosecha
+              </Label>
+              <Select
+                value={formData.harvestMonth}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, harvestMonth: value })
+                }
+                disabled={submitting}
+              >
+                <SelectTrigger id="harvestMonth" className="bg-background">
+                  <SelectValue placeholder="Seleccionar" />
+                </SelectTrigger>
+                <SelectContent>
+                  {months.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

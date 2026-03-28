@@ -98,10 +98,6 @@ export async function getSatelliteLayers(): Promise<SatelliteLayer[]> {
   ])
 }
 
-export async function getMLAnalysisProgress(): Promise<{ status: string; progress: number }> {
-  return delay({ status: "Procesando", progress: 78 })
-}
-
 // ==============================================
 // ANALYTICS API (mock)
 // ==============================================
