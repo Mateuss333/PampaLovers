@@ -1,6 +1,7 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js"
 
 import { createClient } from "@/lib/supabase/client"
+import { type UserPlan, getPlanLimits } from "@/lib/plan-limits"
 
 /** Asegura fila en profiles: farms.user_id referencia profiles(id), no auth.users. */
 async function ensureUserProfile(supabase: SupabaseClient, user: User) {
@@ -118,6 +119,14 @@ export interface Lot {
 export interface UserProfile {
   name: string
   email: string
+  plan: UserPlan
+  createdAt: string
+}
+
+export interface UserUsage {
+  farms: number
+  plots: number
+  hectares: number
 }
 
 export interface FarmSettings {
@@ -509,6 +518,7 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
   if (authError || !user) throw new Error("No autenticado")
 
   await ensureUserProfile(supabase, user)
+  await checkPlanLimit(supabase, user.id, "plot")
 
   const row: {
     farm_id: string
@@ -628,6 +638,8 @@ export async function getUserProfile(): Promise<UserProfile> {
   return {
     name: data.name ?? "",
     email: data.email ?? user.email ?? "",
+    plan: (data.plan as UserPlan) ?? "free",
+    createdAt: data.created_at ?? new Date().toISOString(),
   }
 }
 
@@ -648,6 +660,104 @@ export async function updateProfile(updates: {
     .eq("id", user.id)
 
   if (error) throw error
+}
+
+// ──────────────────────────────────────────────
+// USAGE & PLAN LIMITS
+// ──────────────────────────────────────────────
+
+export async function getUserUsage(): Promise<UserUsage> {
+  const supabase = createClient()
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+  if (authError || !user) throw new Error("No autenticado")
+
+  const { data: farms, error: farmsErr } = await supabase
+    .from("farms")
+    .select("id")
+    .eq("user_id", user.id)
+
+  if (farmsErr) throw new Error(farmsErr.message)
+
+  const farmIds = (farms ?? []).map((f) => f.id)
+  if (farmIds.length === 0) {
+    return { farms: 0, plots: 0, hectares: 0 }
+  }
+
+  const { data: plots, error: plotsErr } = await supabase
+    .from("plots")
+    .select("area_ha")
+    .in("farm_id", farmIds)
+
+  if (plotsErr) throw new Error(plotsErr.message)
+
+  const hectares = (plots ?? []).reduce(
+    (sum, p) => sum + (Number(p.area_ha) || 0),
+    0,
+  )
+
+  return {
+    farms: farmIds.length,
+    plots: (plots ?? []).length,
+    hectares,
+  }
+}
+
+async function checkPlanLimit(
+  supabase: SupabaseClient,
+  userId: string,
+  action: "farm" | "plot",
+): Promise<void> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("plan")
+    .eq("id", userId)
+    .single()
+
+  const plan: UserPlan = (profile?.plan as UserPlan) ?? "free"
+  const limits = getPlanLimits(plan)
+
+  const { data: farms } = await supabase
+    .from("farms")
+    .select("id")
+    .eq("user_id", userId)
+
+  const farmIds = (farms ?? []).map((f) => f.id)
+
+  if (action === "farm") {
+    if (farmIds.length >= limits.maxFarms) {
+      throw new Error(
+        `Tu plan ${limits.label} permite un máximo de ${limits.maxFarms} granja(s). Mejorá tu plan para continuar.`,
+      )
+    }
+    return
+  }
+
+  if (farmIds.length === 0) return
+
+  const { data: plots } = await supabase
+    .from("plots")
+    .select("area_ha")
+    .in("farm_id", farmIds)
+
+  const plotCount = (plots ?? []).length
+  if (plotCount >= limits.maxPlots) {
+    throw new Error(
+      `Tu plan ${limits.label} permite un máximo de ${Number.isFinite(limits.maxPlots) ? limits.maxPlots : "ilimitados"} lotes. Mejorá tu plan para continuar.`,
+    )
+  }
+
+  const totalHa = (plots ?? []).reduce(
+    (sum, p) => sum + (Number(p.area_ha) || 0),
+    0,
+  )
+  if (totalHa >= limits.maxHectares) {
+    throw new Error(
+      `Tu plan ${limits.label} permite un máximo de ${limits.maxHectares} hectáreas totales. Mejorá tu plan para continuar.`,
+    )
+  }
 }
 
 // ──────────────────────────────────────────────
@@ -702,6 +812,7 @@ export async function createFarm(input: CreateFarmInput): Promise<DbFarm> {
   if (authError || !user) throw new Error("No autenticado")
 
   await ensureUserProfile(supabase, user)
+  await checkPlanLimit(supabase, user.id, "farm")
 
   // Solo columnas de la migración base (001). Incluir size_ha en el INSERT rompe
   // con 400 si en Supabase remoto no corriste 202603280002 (columna inexistente).

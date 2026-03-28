@@ -7,6 +7,7 @@ import {
   Map,
   Satellite,
   BarChart3,
+  CreditCard,
   Settings,
   Leaf,
 } from "lucide-react"
@@ -17,6 +18,7 @@ const navigation = [
   { name: "Mis Lotes", href: "/lotes", icon: Map },
   { name: "Vista Satelital", href: "/satelite", icon: Satellite },
   { name: "Rendimientos", href: "/analytics", icon: BarChart3 },
+  { name: "Uso y Plan", href: "/uso", icon: CreditCard },
   { name: "Configuración", href: "/settings", icon: Settings },
 ]
 
