@@ -48,8 +48,8 @@ if (!functionsAuthToken) {
 }
 
 const plotIdArg = process.argv[2] ?? TEST_PLOT_ID ?? null;
-const dateFrom = process.argv[3] ?? TEST_DATE_FROM ?? getDateOffset(-14);
-const dateTo = process.argv[4] ?? TEST_DATE_TO ?? getDateOffset(-1);
+const dateFrom = process.argv[3] ?? TEST_DATE_FROM ?? null;
+const dateTo = process.argv[4] ?? TEST_DATE_TO ?? null;
 
 const TRACKED_FIELDS = [
   "ndvi_index",
@@ -70,11 +70,15 @@ let createdPlotId = null;
 async function main() {
   try {
     console.log("Running sync-plot-eos-data smoke test...");
-    console.log(`Date range: ${dateFrom} -> ${dateTo}`);
+    console.log(
+      dateFrom || dateTo
+        ? `Date range override: ${dateFrom ?? "<from plot.sowing_date>"} -> ${dateTo ?? "<today>"}`
+        : "Date range mode: derive dateFrom from plot.sowing_date and dateTo from today",
+    );
 
     const plot = plotIdArg
       ? await getPlotById(plotIdArg)
-      : await findTestablePlot();
+      : await findTestablePlot({ requiresSowingDate: dateFrom == null });
 
     console.log(`Using plot: ${plot.id}`);
     console.log(`Location source: ${getGeoJsonLike(plot) ? "geoJson" : "lat/lon fallback"}`);
@@ -97,8 +101,8 @@ async function main() {
 
     const syncResult = await invokeFunction({
       plotId: plot.id,
-      dateFrom,
-      dateTo,
+      ...(dateFrom ? { dateFrom } : {}),
+      ...(dateTo ? { dateTo } : {}),
     });
 
     if (syncResult.status !== 200) {
@@ -156,7 +160,7 @@ async function main() {
   }
 }
 
-async function findTestablePlot() {
+async function findTestablePlot({ requiresSowingDate }) {
   const plots = await queryPlots(
     "select=*&limit=50",
   );
@@ -164,7 +168,8 @@ async function findTestablePlot() {
   const plot = plots.find((candidate) => {
     const hasGeoJson = getGeoJsonLike(candidate) != null;
     const hasLatLon = candidate.latitude != null && candidate.longitude != null;
-    return hasGeoJson || hasLatLon;
+    const hasSowingDate = candidate.sowing_date != null;
+    return (hasGeoJson || hasLatLon) && (!requiresSowingDate || hasSowingDate);
   });
 
   if (!plot) {
@@ -239,6 +244,7 @@ async function createTemporaryPlot() {
       group: 1,
       latitude: TEMP_TEST_PLOT.latitude,
       longitude: TEMP_TEST_PLOT.longitude,
+      sowing_date: getDateOffset(-30),
       description: "Temporary plot created by the sync-plot-eos-data smoke test.",
     }),
   });

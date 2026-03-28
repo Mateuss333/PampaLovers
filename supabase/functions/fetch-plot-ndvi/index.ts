@@ -2,6 +2,9 @@ import {
   createClient,
   type SupabaseClient,
 } from "npm:@supabase/supabase-js@2";
+import {
+  resolvePlotDateRange,
+} from "../_shared/plot-date-range.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -10,7 +13,6 @@ const CORS_HEADERS = {
   "Content-Type": "application/json",
 } as const;
 
-const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -41,8 +43,8 @@ interface JsonObject {
 
 interface RequestPayload {
   plotId: string;
-  dateFrom: string;
-  dateTo: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 type Coordinate = [number, number];
@@ -56,6 +58,7 @@ interface PlotRecord extends Record<string, unknown> {
   id: string;
   latitude?: number | string | null;
   longitude?: number | string | null;
+  sowing_date?: string | null;
   geoJson?: JsonValue;
   geojson?: JsonValue;
   geoJSON?: JsonValue;
@@ -64,6 +67,7 @@ interface PlotRecord extends Record<string, unknown> {
 interface PolygonLocation {
   kind: "polygon";
   plotId: string;
+  sowingDate: string | null;
   polygon: PolygonGeoJson;
   centroid: {
     latitude: number;
@@ -78,6 +82,7 @@ interface PolygonLocation {
 interface PointLocation {
   kind: "point";
   plotId: string;
+  sowingDate: string | null;
   latitude: number;
   longitude: number;
   source: {
@@ -148,17 +153,34 @@ if (import.meta.main) {
 
       console.log("[fetch-plot-ndvi] Incoming request", {
         plotId: payload.plotId,
-        dateFrom: payload.dateFrom,
-        dateTo: payload.dateTo,
+        requestedDateFrom: payload.dateFrom ?? null,
+        requestedDateTo: payload.dateTo ?? null,
       });
 
       const location = await getPlotLocation(supabase, payload.plotId);
-      const { avg } = await fetchNdviFromEos(location, payload.dateFrom, payload.dateTo);
+      const resolvedDateRange = resolvePlotDateRange(payload, {
+        sowingDate: location.sowingDate,
+      });
+
+      if (!resolvedDateRange.ok) {
+        throw new HttpError(resolvedDateRange.status, resolvedDateRange.message);
+      }
+
+      const { dateFrom, dateTo, source: dateSource } = resolvedDateRange.value;
+
+      console.log("[fetch-plot-ndvi] Resolved date range", {
+        plotId: payload.plotId,
+        dateFrom,
+        dateTo,
+        dateSource,
+      });
+
+      const { avg } = await fetchNdviFromEos(location, dateFrom, dateTo);
 
       return jsonResponse(200, {
         plotId: payload.plotId,
-        dateFrom: payload.dateFrom,
-        dateTo: payload.dateTo,
+        dateFrom,
+        dateTo,
         source: location.source,
         ndvi: {
           avg,
@@ -214,31 +236,28 @@ async function parseRequestPayload(request: Request): Promise<RequestPayload> {
 
   if (
     typeof plotId !== "string" ||
-    typeof dateFrom !== "string" ||
-    typeof dateTo !== "string" ||
-    !plotId ||
-    !dateFrom ||
-    !dateTo
+    !plotId
   ) {
-    throw new HttpError(
-      400,
-      "Missing required parameters: plotId, dateFrom, dateTo.",
-    );
+    throw new HttpError(400, "Missing required parameter: plotId.");
+  }
+
+  if (dateFrom != null && typeof dateFrom !== "string") {
+    throw new HttpError(400, "dateFrom must be a string when provided.");
+  }
+
+  if (dateTo != null && typeof dateTo !== "string") {
+    throw new HttpError(400, "dateTo must be a string when provided.");
   }
 
   if (!UUID_REGEX.test(plotId)) {
     throw new HttpError(400, "plotId must be a valid UUID.");
   }
 
-  if (!isValidDateString(dateFrom) || !isValidDateString(dateTo)) {
-    throw new HttpError(400, "dateFrom and dateTo must use YYYY-MM-DD format.");
-  }
-
-  if (dateFrom > dateTo) {
-    throw new HttpError(400, "dateFrom must be less than or equal to dateTo.");
-  }
-
-  return { plotId, dateFrom, dateTo };
+  return {
+    plotId,
+    dateFrom: normalizeOptionalDateInput(dateFrom),
+    dateTo: normalizeOptionalDateInput(dateTo),
+  };
 }
 
 export async function getPlotLocation(
@@ -263,6 +282,7 @@ export async function getPlotLocation(
   }
 
   const plot = data as PlotRecord;
+  const sowingDate = typeof plot.sowing_date === "string" ? plot.sowing_date : null;
   const geoJsonCandidate = plot.geoJson ?? plot.geojson ?? plot.geoJSON ?? null;
   if (geoJsonCandidate != null) {
     const polygon = validateGeoJsonPolygon(geoJsonCandidate);
@@ -278,6 +298,7 @@ export async function getPlotLocation(
       return {
         kind: "polygon",
         plotId,
+        sowingDate,
         polygon,
         centroid,
         source: {
@@ -305,6 +326,7 @@ export async function getPlotLocation(
     return {
       kind: "point",
       plotId,
+      sowingDate,
       latitude,
       longitude,
       source: {
@@ -848,17 +870,17 @@ function isValidLongitude(value: number | null): value is number {
   return value != null && value >= -180 && value <= 180;
 }
 
-function isValidDateString(value: string): boolean {
-  if (!DATE_REGEX.test(value)) {
-    return false;
-  }
-
-  const date = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
-
 function roundTo4Decimals(value: number): number {
   return Number(value.toFixed(4));
+}
+
+function normalizeOptionalDateInput(value: string | undefined): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
 }
 
 function requireEnv(name: string): string {
