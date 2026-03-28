@@ -24,6 +24,7 @@ import {
 } from "@/lib/supabase-api"
 import {
   type UserPlan,
+  DEFAULT_USER_PLAN,
   PLAN_LIMITS,
   formatLimit,
   getPlanLimits,
@@ -39,16 +40,16 @@ const PLAN_FEATURES: Record<UserPlan, string[]> = {
     "Vista satelital básica",
   ],
   premium: [
-    "Hasta 25 lotes",
-    "3 granjas",
-    "500 hectáreas totales",
+    "Hasta 30 lotes",
+    "Hasta 5 granjas",
+    "Hasta 10.000 hectáreas totales",
     "Vista satelital avanzada",
     "Predicciones ML",
   ],
   pro: [
     "Lotes ilimitados",
-    "10 granjas",
-    "5.000 hectáreas totales",
+    "Hasta 100 granjas",
+    "Hasta 500.000 hectáreas totales",
     "Vista satelital avanzada",
     "Predicciones ML prioritarias",
     "Soporte dedicado",
@@ -80,7 +81,7 @@ export default function UsoPage() {
     load()
   }, [])
 
-  const plan = profile?.plan ?? "free"
+  const plan = profile?.plan ?? DEFAULT_USER_PLAN
   const limits = getPlanLimits(plan)
 
   const plotsPct = usage ? usagePercent(usage.plots, limits.maxPlots) : 0

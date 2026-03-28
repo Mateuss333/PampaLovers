@@ -1,7 +1,11 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js"
 
 import { createClient } from "@/lib/supabase/client"
-import { type UserPlan, getPlanLimits } from "@/lib/plan-limits"
+import {
+  type UserPlan,
+  DEFAULT_USER_PLAN,
+  getPlanLimits,
+} from "@/lib/plan-limits"
 
 /** Asegura fila en profiles: farms.user_id referencia profiles(id), no auth.users. */
 async function ensureUserProfile(supabase: SupabaseClient, user: User) {
@@ -638,7 +642,7 @@ export async function getUserProfile(): Promise<UserProfile> {
   return {
     name: data.name ?? "",
     email: data.email ?? user.email ?? "",
-    plan: (data.plan as UserPlan) ?? "free",
+    plan: (data.plan as UserPlan) ?? DEFAULT_USER_PLAN,
     createdAt: data.created_at ?? new Date().toISOString(),
   }
 }
@@ -716,7 +720,7 @@ async function checkPlanLimit(
     .eq("id", userId)
     .single()
 
-  const plan: UserPlan = (profile?.plan as UserPlan) ?? "free"
+  const plan: UserPlan = (profile?.plan as UserPlan) ?? DEFAULT_USER_PLAN
   const limits = getPlanLimits(plan)
 
   const { data: farms } = await supabase
