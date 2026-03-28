@@ -187,6 +187,7 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
         group: parsedGroup,
         crop_type: formData.cropType || undefined,
         description: descriptionParts.length ? descriptionParts.join(" · ") : undefined,
+        sowing_date: formData.sowingDate.trim() || undefined,
         area_ha: areaHa,
         status: "Sembrado",
         latitude: latSum / n,

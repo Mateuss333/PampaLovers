@@ -56,6 +56,8 @@ export interface DbPlot {
   ndvi_index: number | null
   crop_disease_status: string | null
   notes: string | null
+  /** ISO yyyy-mm-dd desde columna `date` en Postgres */
+  sowing_date: string | null
   created_at: string
   updated_at: string
   group: number
@@ -373,6 +375,8 @@ export interface CreatePlotInput {
   fertilizer_type?: string
   pesticide_usage_ml?: number
   crop_disease_status?: string
+  /** yyyy-mm-dd (input type=date) */
+  sowing_date?: string
 }
 
 function roundGeographicCoord(value: number, decimals: number): number {
@@ -406,6 +410,7 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
     fertilizer_type?: string
     pesticide_usage_ml?: number
     crop_disease_status?: string
+    sowing_date?: string
   } = {
     farm_id: input.farm_id,
     name: input.name,
@@ -441,6 +446,8 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
     row.pesticide_usage_ml = input.pesticide_usage_ml
   }
   if (input.crop_disease_status) row.crop_disease_status = input.crop_disease_status
+  const sd = input.sowing_date?.trim()
+  if (sd) row.sowing_date = sd
 
   const { data, error } = await supabase
     .from("plots")
