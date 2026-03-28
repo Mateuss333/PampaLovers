@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { MetricCardSkeleton, ChartCardSkeleton, ActivitySkeleton } from "@/components/skeleton-card"
-import { MapPin, Layers, TrendingUp, Cpu } from "lucide-react"
+import { createClient as createSupabaseClient } from "@/lib/supabase/client"
+import { MapPin, Layers, TrendingUp, Cpu, Database } from "lucide-react"
 import {
   Bar,
   BarChart,
@@ -32,11 +34,18 @@ const iconMap: Record<string, typeof MapPin> = {
   yield: TrendingUp,
 }
 
+type SupabaseStatus = {
+  variant: "default" | "destructive"
+  title: string
+  message: string
+}
+
 export default function DashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetric[] | null>(null)
   const [yieldData, setYieldData] = useState<YieldComparison[] | null>(null)
   const [activities, setActivities] = useState<Activity[] | null>(null)
   const [mlStatus, setMLStatus] = useState<MLStatus | null>(null)
+  const [supabaseStatus, setSupabaseStatus] = useState<SupabaseStatus | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -57,6 +66,54 @@ export default function DashboardPage() {
     loadData()
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadSupabaseStatus() {
+      try {
+        const supabase = createSupabaseClient()
+        const { data, error } = await supabase.auth.getUser()
+
+        if (cancelled) {
+          return
+        }
+
+        if (error) {
+          setSupabaseStatus({
+            variant: "destructive",
+            title: "Supabase respondio con error",
+            message: error.message,
+          })
+          return
+        }
+
+        setSupabaseStatus({
+          variant: "default",
+          title: "Supabase conectado",
+          message: data.user
+            ? `Sesion detectada para ${data.user.email ?? data.user.id}.`
+            : "Cliente configurado correctamente. No hay una sesion iniciada todavia.",
+        })
+      } catch (error) {
+        if (cancelled) {
+          return
+        }
+
+        setSupabaseStatus({
+          variant: "destructive",
+          title: "Falta configurar Supabase",
+          message: error instanceof Error ? error.message : "No se pudo inicializar el cliente de Supabase.",
+        })
+      }
+    }
+
+    loadSupabaseStatus()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -67,6 +124,17 @@ export default function DashboardPage() {
             Resumen de tu operación agrícola con predicciones ML en tiempo real
           </p>
         </div>
+
+        {supabaseStatus ? (
+          <Alert
+            variant={supabaseStatus.variant}
+            className="border-border/60 bg-card text-card-foreground"
+          >
+            <Database className="h-4 w-4" />
+            <AlertTitle>{supabaseStatus.title}</AlertTitle>
+            <AlertDescription>{supabaseStatus.message}</AlertDescription>
+          </Alert>
+        ) : null}
 
         {/* Metric Cards */}
         <div className="grid gap-4 md:grid-cols-3">
