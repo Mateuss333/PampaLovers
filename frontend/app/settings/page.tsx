@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { toast } from "sonner"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -24,6 +25,16 @@ export default function SettingsPage() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [farmSettings, setFarmSettings] = useState<FarmSettings | null>(null)
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  const [firstName, setFirstName] = useState("")
+  const [lastName, setLastName] = useState("")
+  const [email, setEmail] = useState("")
+  const [farmName, setFarmName] = useState("")
+  const [farmSize, setFarmSize] = useState("")
+  const [location, setLocation] = useState("")
+  const [timezone, setTimezone] = useState("")
+  const [currency, setCurrency] = useState("")
 
   useEffect(() => {
     async function loadData() {
@@ -34,10 +45,26 @@ export default function SettingsPage() {
       ])
       setUserProfile(profile)
       setFarmSettings(farm)
+      setFirstName(profile.firstName)
+      setLastName(profile.lastName)
+      setEmail(profile.email)
+      setFarmName(farm.name)
+      setFarmSize(String(farm.size))
+      setLocation(farm.location)
+      setTimezone(farm.timezone)
+      setCurrency(farm.currency)
       setLoading(false)
     }
     loadData()
   }, [])
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    await new Promise((r) => setTimeout(r, 450))
+    setSaving(false)
+    toast.success("Cambios guardados")
+  }
 
   return (
     <DashboardLayout>
@@ -52,7 +79,7 @@ export default function SettingsPage() {
 
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Main Settings */}
-          <div className="space-y-6 lg:col-span-2">
+          <form className="space-y-6 lg:col-span-2" onSubmit={handleSave}>
             {/* Profile Information */}
             <Card className="border-border/60">
               <CardHeader>
@@ -85,7 +112,7 @@ export default function SettingsPage() {
                         </AvatarFallback>
                       </Avatar>
                       <div>
-                        <Button variant="outline" size="sm">
+                        <Button type="button" variant="outline" size="sm">
                           Cambiar foto
                         </Button>
                         <p className="mt-1 text-xs text-muted-foreground">
@@ -104,7 +131,13 @@ export default function SettingsPage() {
                     {loading ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <Input id="firstName" defaultValue={userProfile?.firstName} className="bg-background" />
+                      <Input
+                        id="firstName"
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value)}
+                        className="bg-background"
+                        autoComplete="given-name"
+                      />
                     )}
                   </div>
                   <div className="space-y-2">
@@ -112,23 +145,28 @@ export default function SettingsPage() {
                     {loading ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <Input id="lastName" defaultValue={userProfile?.lastName} className="bg-background" />
+                      <Input
+                        id="lastName"
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                        className="bg-background"
+                        autoComplete="family-name"
+                      />
                     )}
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2 sm:col-span-2">
                     <Label htmlFor="email" className="text-foreground">Email</Label>
                     {loading ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <Input id="email" type="email" defaultValue={userProfile?.email} className="bg-background" />
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="phone" className="text-foreground">Teléfono</Label>
-                    {loading ? (
-                      <Skeleton className="h-10 w-full" />
-                    ) : (
-                      <Input id="phone" type="tel" defaultValue={userProfile?.phone} className="bg-background" />
+                      <Input
+                        id="email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="bg-background"
+                        autoComplete="email"
+                      />
                     )}
                   </div>
                 </div>
@@ -155,7 +193,12 @@ export default function SettingsPage() {
                     {loading ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <Input id="farmName" defaultValue={farmSettings?.name} className="bg-background" />
+                      <Input
+                        id="farmName"
+                        value={farmName}
+                        onChange={(e) => setFarmName(e.target.value)}
+                        className="bg-background"
+                      />
                     )}
                   </div>
                   <div className="space-y-2">
@@ -163,7 +206,13 @@ export default function SettingsPage() {
                     {loading ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <Input id="farmSize" type="number" defaultValue={farmSettings?.size} className="bg-background font-mono" />
+                      <Input
+                        id="farmSize"
+                        type="number"
+                        value={farmSize}
+                        onChange={(e) => setFarmSize(e.target.value)}
+                        className="bg-background font-mono"
+                      />
                     )}
                   </div>
                   <div className="space-y-2 sm:col-span-2">
@@ -172,11 +221,12 @@ export default function SettingsPage() {
                       <Skeleton className="h-10 w-full" />
                     ) : (
                       <div className="relative">
-                        <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                         <Input
                           id="location"
                           className="pl-10 bg-background"
-                          defaultValue={farmSettings?.location}
+                          value={location}
+                          onChange={(e) => setLocation(e.target.value)}
                         />
                       </div>
                     )}
@@ -186,7 +236,7 @@ export default function SettingsPage() {
                     {loading ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <Select defaultValue={farmSettings?.timezone}>
+                      <Select value={timezone} onValueChange={setTimezone}>
                         <SelectTrigger id="timezone" className="bg-background">
                           <SelectValue />
                         </SelectTrigger>
@@ -209,7 +259,7 @@ export default function SettingsPage() {
                     {loading ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <Select defaultValue={farmSettings?.currency}>
+                      <Select value={currency} onValueChange={setCurrency}>
                         <SelectTrigger id="currency" className="bg-background">
                           <SelectValue />
                         </SelectTrigger>
@@ -225,13 +275,22 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
-            {/* Save Button */}
-            <div className="flex justify-end">
-              <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                Guardar Cambios
-              </Button>
+            <div className="rounded-lg border border-border bg-card px-4 py-4 sm:px-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Guarda nombre, email y datos de la finca. El resto de opciones del panel se gestionan aparte.
+                </p>
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full shrink-0 sm:w-auto min-w-[180px] bg-primary hover:bg-primary/90 text-primary-foreground"
+                  disabled={loading || saving}
+                >
+                  {saving ? "Guardando…" : "Guardar cambios"}
+                </Button>
+              </div>
             </div>
-          </div>
+          </form>
 
           {/* Sidebar */}
           <div className="space-y-6">
@@ -257,20 +316,7 @@ export default function SettingsPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label className="text-foreground">Fuente de Imágenes</Label>
-                  <Select defaultValue="sentinel">
-                    <SelectTrigger className="bg-background">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="sentinel">Sentinel-2</SelectItem>
-                      <SelectItem value="landsat">Landsat-8</SelectItem>
-                      <SelectItem value="planet">Planet Labs</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                </CardContent>
+              </CardContent>
             </Card>
 
             {/* Quick Stats */}
@@ -296,7 +342,7 @@ export default function SettingsPage() {
                   <span className="font-medium text-foreground">Mar 2024</span>
                 </div>
                 <Separator />
-                <Button variant="outline" className="w-full">
+                <Button variant="outline" className="w-full" type="button">
                   Actualizar Plan
                 </Button>
               </CardContent>
@@ -309,11 +355,9 @@ export default function SettingsPage() {
                   Zona de Peligro
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <Button variant="outline" className="w-full justify-start text-muted-foreground">
-                  Exportar todos los datos
-                </Button>
+              <CardContent>
                 <Button
+                  type="button"
                   variant="outline"
                   className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
                 >

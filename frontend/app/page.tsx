@@ -20,11 +20,9 @@ import {
 import {
   getDashboardMetrics,
   getYieldComparison,
-  getRecentActivities,
   getMLStatus,
   type DashboardMetric,
   type YieldComparison,
-  type Activity,
   type MLStatus,
 } from "@/lib/api"
 
@@ -43,7 +41,6 @@ type SupabaseStatus = {
 export default function DashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetric[] | null>(null)
   const [yieldData, setYieldData] = useState<YieldComparison[] | null>(null)
-  const [activities, setActivities] = useState<Activity[] | null>(null)
   const [mlStatus, setMLStatus] = useState<MLStatus | null>(null)
   const [supabaseStatus, setSupabaseStatus] = useState<SupabaseStatus | null>(null)
   const [loading, setLoading] = useState(true)
@@ -51,15 +48,13 @@ export default function DashboardPage() {
   useEffect(() => {
     async function loadData() {
       setLoading(true)
-      const [metricsData, yieldDataRes, activitiesData, mlStatusData] = await Promise.all([
+      const [metricsData, yieldDataRes, mlStatusData] = await Promise.all([
         getDashboardMetrics(),
         getYieldComparison(),
-        getRecentActivities(),
         getMLStatus(),
       ])
       setMetrics(metricsData)
       setYieldData(yieldDataRes)
-      setActivities(activitiesData)
       setMLStatus(mlStatusData)
       setLoading(false)
     }
@@ -171,15 +166,12 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Main Content Grid */}
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Yield Comparison Chart */}
+        {/* Yield chart */}
+        <div>
           {loading || !yieldData ? (
-            <div className="lg:col-span-2">
-              <ChartCardSkeleton />
-            </div>
+            <ChartCardSkeleton />
           ) : (
-            <Card className="lg:col-span-2 border-border/60">
+            <Card className="border-border/60">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
@@ -243,39 +235,6 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           )}
-
-          {/* Activity Feed */}
-          <Card className="border-border/60">
-            <CardHeader>
-              <CardTitle className="text-foreground">Actividad Reciente</CardTitle>
-              <CardDescription>Actualizaciones de tus campos</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading || !activities ? (
-                <ActivitySkeleton />
-              ) : (
-                <div className="space-y-4">
-                  {activities.map((activity) => (
-                    <div key={activity.id} className="flex items-start gap-3">
-                      <div
-                        className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${
-                          activity.type === "success"
-                            ? "bg-accent"
-                            : activity.type === "warning"
-                            ? "bg-chart-4"
-                            : "bg-chart-5"
-                        }`}
-                      />
-                      <div className="flex-1 space-y-1 min-w-0">
-                        <p className="text-sm leading-snug text-foreground">{activity.message}</p>
-                        <p className="text-xs text-muted-foreground">{activity.time}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
 
         {/* ML Predictions Summary */}
