@@ -73,6 +73,13 @@ export interface DbFarm {
   updated_at: string
 }
 
+/** Fila en plot_previous_yields: position 1 = cosecha más reciente. */
+export interface DbPlotPreviousYield {
+  position: number
+  yield_value: number
+  yield_unit: "kg_ha" | "tn_ha"
+}
+
 // ──────────────────────────────────────────────
 // Frontend-facing types (mapped from DB rows)
 // ──────────────────────────────────────────────
@@ -115,6 +122,13 @@ export interface DashboardMetric {
   changeType: "positive" | "negative" | "neutral"
 }
 
+/** Rendimiento agregado por cultivo para el dashboard (t/ha). */
+export interface YieldByCrop {
+  crop: string
+  actual: number | null
+  prediction: number | null
+}
+
 export interface SoilMetric {
   id: string
   title: string
@@ -150,6 +164,80 @@ function soilStatus(
   if (value < min) return "Bajo"
   if (value > max) return "Alto"
   return "Óptimo"
+}
+
+const PREFERRED_CROP_ORDER = ["Soja", "Maíz", "Trigo", "Girasol"] as const
+
+function yieldToTnHa(value: number, unit: string): number | null {
+  if (!Number.isFinite(value) || value <= 0) return null
+  if (unit === "tn_ha") return value
+  if (unit === "kg_ha") return value / 1000
+  return null
+}
+
+/** H = sum((1/p) * y_p) / sum(1/p); p más alto = más antiguo, menos peso. */
+function weightedHistoricalTnHa(
+  rows: DbPlotPreviousYield[],
+): number | null {
+  let sumWY = 0
+  let sumW = 0
+  for (const r of rows) {
+    const p = r.position
+    if (p < 1 || p > 10) continue
+    const y = yieldToTnHa(Number(r.yield_value), r.yield_unit)
+    if (y == null) continue
+    const w = 1 / p
+    sumWY += w * y
+    sumW += w
+  }
+  if (sumW === 0) return null
+  return sumWY / sumW
+}
+
+function lastHarvestTnHa(rows: DbPlotPreviousYield[]): number | null {
+  const row = rows.find((r) => r.position === 1)
+  if (!row) return null
+  return yieldToTnHa(Number(row.yield_value), row.yield_unit)
+}
+
+function blendMlAndHistorical(
+  mlTnHa: number | null,
+  historicalHTnHa: number | null,
+): number | null {
+  const hasMl = mlTnHa != null && Number.isFinite(mlTnHa)
+  const hasH =
+    historicalHTnHa != null && Number.isFinite(historicalHTnHa)
+  if (hasMl && hasH) return 0.7 * mlTnHa! + 0.3 * historicalHTnHa!
+  if (hasMl) return mlTnHa!
+  if (hasH) return historicalHTnHa!
+  return null
+}
+
+function parseMlPredicted(
+  embed:
+    | { ml_predicted_tn_ha: number | string | null }
+    | { ml_predicted_tn_ha: number | string | null }[]
+    | null
+    | undefined,
+): number | null {
+  if (embed == null) return null
+  const row = Array.isArray(embed) ? embed[0] : embed
+  if (!row || row.ml_predicted_tn_ha == null) return null
+  const v = Number(row.ml_predicted_tn_ha)
+  return Number.isFinite(v) && v >= 0 ? v : null
+}
+
+function sortCropLabels(crops: string[]): string[] {
+  const remaining = new Set(crops)
+  const ordered: string[] = []
+  for (const c of PREFERRED_CROP_ORDER) {
+    if (remaining.has(c)) {
+      ordered.push(c)
+      remaining.delete(c)
+    }
+  }
+  const rest = [...remaining].sort((a, b) => a.localeCompare(b, "es"))
+  return [...ordered, ...rest]
 }
 
 // ──────────────────────────────────────────────
@@ -401,6 +489,79 @@ export async function updateFarm(
     .eq("id", farmId)
 
   if (error) throw error
+}
+
+// ──────────────────────────────────────────────
+// YIELD BY CROP (plots + plot_previous_yields + plot_prediction)
+// ──────────────────────────────────────────────
+
+export async function getYieldComparisonByCrop(): Promise<YieldByCrop[]> {
+  const supabase = createClient()
+  const { data: plots, error } = await supabase.from("plots").select(`
+    id,
+    crop_type,
+    area_ha,
+    plot_previous_yields ( position, yield_value, yield_unit ),
+    plot_prediction ( ml_predicted_tn_ha )
+  `)
+
+  if (error) throw new Error(error.message)
+
+  type PlotRow = {
+    id: string
+    crop_type: string | null
+    area_ha: number | null
+    plot_previous_yields: DbPlotPreviousYield[] | null
+    plot_prediction:
+      | { ml_predicted_tn_ha: number | null }
+      | { ml_predicted_tn_ha: number | null }[]
+      | null
+  }
+
+  const rows = (plots ?? []) as PlotRow[]
+
+  const byCrop = new Map<
+    string,
+    { actualNum: number; actualDen: number; predNum: number; predDen: number }
+  >()
+
+  for (const plot of rows) {
+    const crop = plot.crop_type?.trim()
+    if (!crop) continue
+
+    const area = Number(plot.area_ha)
+    const weight = Number.isFinite(area) && area > 0 ? area : 1
+
+    const prevRows = plot.plot_previous_yields ?? []
+    const H = weightedHistoricalTnHa(prevRows)
+    const actualOne = lastHarvestTnHa(prevRows)
+    const ml = parseMlPredicted(plot.plot_prediction)
+    const prediction = blendMlAndHistorical(ml, H)
+
+    let acc = byCrop.get(crop)
+    if (!acc) {
+      acc = { actualNum: 0, actualDen: 0, predNum: 0, predDen: 0 }
+      byCrop.set(crop, acc)
+    }
+    if (actualOne != null) {
+      acc.actualNum += actualOne * weight
+      acc.actualDen += weight
+    }
+    if (prediction != null) {
+      acc.predNum += prediction * weight
+      acc.predDen += weight
+    }
+  }
+
+  const labels = sortCropLabels([...byCrop.keys()])
+  return labels.map((crop) => {
+    const acc = byCrop.get(crop)!
+    return {
+      crop,
+      actual: acc.actualDen > 0 ? acc.actualNum / acc.actualDen : null,
+      prediction: acc.predDen > 0 ? acc.predNum / acc.predDen : null,
+    }
+  })
 }
 
 // ──────────────────────────────────────────────
