@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,6 +22,7 @@ import {
   Info,
   Calendar,
   Cpu,
+  Crosshair,
 } from "lucide-react"
 import { getMLAnalysisProgress } from "@/lib/api"
 import { fetchLots, type Lot } from "@/lib/supabase-api"
@@ -67,6 +68,17 @@ export default function SatelitePage() {
     loadData()
   }, [])
 
+  const satellitePlots = useMemo(() => {
+    if (!lots) return []
+    return lots
+      .filter((l) => l.polygon && l.polygon.length >= 3)
+      .map((l) => ({
+        id: l.id,
+        name: l.name,
+        polygon: l.polygon!,
+      }))
+  }, [lots])
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -85,6 +97,7 @@ export default function SatelitePage() {
                 <SatelliteMap
                   ref={mapRef}
                   mapType={mapType}
+                  plots={satellitePlots}
                   className="absolute inset-0 z-0 h-full w-full [&_.leaflet-container]:h-full [&_.leaflet-container]:w-full [&_.leaflet-container]:bg-muted"
                 />
 
@@ -109,6 +122,20 @@ export default function SatelitePage() {
                       aria-label="Alejar mapa"
                     >
                       <Minus className="h-5 w-5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="h-auto min-w-[10rem] flex-col gap-0.5 py-2 shadow-lg bg-card border border-border px-2"
+                      disabled={satellitePlots.length === 0}
+                      onClick={() => mapRef.current?.fitToPlots()}
+                      aria-label="Centrar mapa en mis lotes"
+                    >
+                      <Crosshair className="h-4 w-4" />
+                      <span className="text-[10px] font-medium leading-tight text-center">
+                        Ir a mis lotes
+                      </span>
                     </Button>
                   </div>
 
@@ -226,18 +253,21 @@ export default function SatelitePage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="space-y-1">
-                    {lots.slice(0, 6).map((lot) => (
-                      <div
+                  <div className="max-h-[220px] space-y-1 overflow-y-auto pr-1">
+                    {lots.map((lot) => (
+                      <button
                         key={lot.id}
-                        className="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-muted cursor-pointer transition-colors"
+                        type="button"
+                        disabled={!lot.polygon || lot.polygon.length < 3}
+                        className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => mapRef.current?.flyToLot(lot.id)}
                       >
                         <div className="flex items-center gap-2">
-                          <div className={`h-3 w-3 rounded ${cropColors[lot.crop] || "bg-muted"}`} />
+                          <div className={`h-3 w-3 shrink-0 rounded ${cropColors[lot.crop] || "bg-muted"}`} />
                           <span className="text-sm font-medium text-foreground">{lot.name}</span>
                         </div>
                         <span className="text-xs text-muted-foreground">{lot.crop}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
