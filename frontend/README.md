@@ -14,6 +14,8 @@ pnpm dev
 bun dev
 ```
 
+`npm run dev` usa **Webpack** (`next dev --webpack`). En este repo hay dos `package-lock.json` (raíz y `frontend/`); Next infiere el workspace en la raíz y **Turbopack** puede indexar todo el monorepo y consumir mucha CPU/RAM. Si querés probar Turbopack igual: `npm run dev:turbo`.
+
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.

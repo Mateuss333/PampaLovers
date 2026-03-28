@@ -53,13 +53,23 @@ export default function LoginPage() {
         setLoading(false)
         return
       }
-      router.push("/")
+      const { data: farms } = await supabase.from("farms").select("id").limit(1)
+      if (!farms || farms.length === 0) {
+        router.push("/onboarding")
+      } else {
+        router.push("/")
+      }
       router.refresh()
     } else {
-      const { error } = await supabase.auth.signUp({ email, password })
+      const { error, data } = await supabase.auth.signUp({ email, password })
       if (error) {
         setError(translateAuthError(error.message))
         setLoading(false)
+        return
+      }
+      if (data.session) {
+        router.push("/onboarding")
+        router.refresh()
         return
       }
       setMessage("Cuenta creada. Revisá tu correo para confirmar el registro.")

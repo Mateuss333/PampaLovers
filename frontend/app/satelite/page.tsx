@@ -23,7 +23,8 @@ import {
   Calendar,
   Cpu,
 } from "lucide-react"
-import { fetchLots, getMLAnalysisProgress, type Lot } from "@/lib/api"
+import { getMLAnalysisProgress } from "@/lib/api"
+import { fetchLots, type Lot } from "@/lib/supabase-api"
 import {
   SatelliteMap,
   type SatelliteMapHandle,

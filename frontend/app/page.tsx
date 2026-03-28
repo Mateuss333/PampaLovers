@@ -19,9 +19,11 @@ import {
 } from "recharts"
 import {
   getDashboardMetrics,
+  type DashboardMetric,
+} from "@/lib/supabase-api"
+import {
   getYieldComparison,
   getMLStatus,
-  type DashboardMetric,
   type YieldComparison,
   type MLStatus,
 } from "@/lib/api"

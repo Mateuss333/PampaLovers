@@ -20,7 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Plus, MapPin, Calendar, Wheat, Trash2 } from "lucide-react"
+import { Plus, MapPin, Calendar, Wheat, Trash2, Loader2 } from "lucide-react"
+import { createPlot } from "@/lib/supabase-api"
 
 interface Coordinate {
   lon: string
@@ -33,6 +34,7 @@ interface NewLotFormData {
   cropType: string
   year: string
   sowingDate: string
+  areaHa: string
   coordinates: Coordinate[]
 }
 
@@ -50,14 +52,22 @@ const cropTypes = [
 const currentYear = new Date().getFullYear()
 const years = Array.from({ length: 10 }, (_, i) => (currentYear - 5 + i).toString())
 
-export function NewLotForm({ onSubmit }: { onSubmit?: (data: NewLotFormData) => void }) {
+interface NewLotFormProps {
+  farmId: string | null
+  onSuccess?: () => void
+}
+
+export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
   const [open, setOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [formData, setFormData] = useState<NewLotFormData>({
     name: "",
     group: "",
     cropType: "",
     year: currentYear.toString(),
     sowingDate: "",
+    areaHa: "",
     coordinates: [
       { lon: "", lat: "" },
       { lon: "", lat: "" },
@@ -87,49 +97,66 @@ export function NewLotForm({ onSubmit }: { onSubmit?: (data: NewLotFormData) => 
     setFormData({ ...formData, coordinates: newCoordinates })
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    // Build the API payload structure
-    const payload = {
-      type: "Feature",
-      properties: {
-        name: formData.name,
-        group: formData.group,
-        years_data: [{
-          crop_type: formData.cropType,
-          year: formData.year,
-          sowing_date: formData.sowingDate,
-        }],
-      },
-      geometry: {
-        type: "Polygon",
-        coordinates: [
-          formData.coordinates.map(coord => [
-            parseFloat(coord.lon),
-            parseFloat(coord.lat),
-          ]),
-        ],
-      },
-    }
-    
-    console.log("API Payload:", JSON.stringify(payload, null, 2))
-    onSubmit?.(formData)
-    setOpen(false)
-    
-    // Reset form
+  const resetForm = () => {
     setFormData({
       name: "",
       group: "",
       cropType: "",
       year: currentYear.toString(),
       sowingDate: "",
+      areaHa: "",
       coordinates: [
         { lon: "", lat: "" },
         { lon: "", lat: "" },
         { lon: "", lat: "" },
       ],
     })
+    setError(null)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!farmId) {
+      setError("No se encontró un establecimiento asociado.")
+      return
+    }
+
+    setSubmitting(true)
+    setError(null)
+
+    try {
+      const validCoords = formData.coordinates.filter((c) => c.lon && c.lat)
+      const centroid =
+        validCoords.length > 0
+          ? {
+              latitude:
+                validCoords.reduce((s, c) => s + parseFloat(c.lat), 0) /
+                validCoords.length,
+              longitude:
+                validCoords.reduce((s, c) => s + parseFloat(c.lon), 0) /
+                validCoords.length,
+            }
+          : {}
+
+      await createPlot({
+        farm_id: farmId,
+        name: formData.name,
+        crop_type: formData.cropType || undefined,
+        description: formData.group || undefined,
+        area_ha: formData.areaHa ? parseFloat(formData.areaHa) : undefined,
+        ...centroid,
+      })
+
+      onSuccess?.()
+      setOpen(false)
+      resetForm()
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Error al crear el lote",
+      )
+    }
+    setSubmitting(false)
   }
 
   return (
@@ -254,6 +281,30 @@ export function NewLotForm({ onSubmit }: { onSubmit?: (data: NewLotFormData) => 
             </div>
           </div>
 
+          {/* Area */}
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="areaHa" className="text-foreground">
+                  Superficie (hectáreas)
+                </Label>
+                <Input
+                  id="areaHa"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="ej: 85"
+                  value={formData.areaHa}
+                  onChange={(e) =>
+                    setFormData({ ...formData, areaHa: e.target.value })
+                  }
+                  className="bg-background font-mono"
+                  disabled={submitting}
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Coordinates */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -322,11 +373,27 @@ export function NewLotForm({ onSubmit }: { onSubmit?: (data: NewLotFormData) => 
             </div>
           </div>
 
+          {error && (
+            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={submitting}
+            >
               Cancelar
             </Button>
-            <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground">
+            <Button
+              type="submit"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              disabled={submitting}
+            >
+              {submitting && <Loader2 className="animate-spin" />}
               Crear Lote
             </Button>
           </DialogFooter>

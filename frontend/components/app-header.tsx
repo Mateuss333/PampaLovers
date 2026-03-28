@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { LogOut, Settings, User } from "lucide-react"
+import { LogOut, Settings } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import Link from "next/link"
 
@@ -45,13 +44,14 @@ export function AppHeader() {
       <div className="flex items-center gap-3">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-              <Avatar className="h-9 w-9 border border-border">
-                <AvatarImage src="/avatars/01.png" alt="Usuario" />
-                <AvatarFallback className="bg-primary text-primary-foreground font-medium">
-                  {getInitials(userEmail)}
-                </AvatarFallback>
-              </Avatar>
+            <Button
+              variant="ghost"
+              className="h-9 w-9 shrink-0 rounded-full p-0"
+              aria-label="Menú de cuenta"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-primary text-xs font-medium text-primary-foreground">
+                {getInitials(userEmail)}
+              </span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56" align="end" forceMount>

@@ -1,9 +1,9 @@
 // ==============================================
-// MOCK API SERVICE LAYER
+// MOCK API SERVICE LAYER (funciones sin backing DB)
 // ==============================================
-// This file simulates API calls with realistic delays.
-// Replace these functions with actual REST API calls when ready.
-// Each function returns a Promise that resolves after a simulated delay.
+// Las funciones con datos reales fueron migradas a supabase-api.ts.
+// Este archivo conserva solo mocks para ML, satellite, yields historicos
+// y actividades, que aun no tienen tablas en la base de datos.
 
 const SIMULATED_DELAY = 500 // ms
 
@@ -14,15 +14,6 @@ function delay<T>(data: T): Promise<T> {
 // ==============================================
 // TYPES
 // ==============================================
-
-export interface DashboardMetric {
-  id: string
-  title: string
-  value: string
-  unit: string
-  change: string
-  changeType: "positive" | "negative" | "neutral"
-}
 
 export interface YieldComparison {
   crop: string
@@ -45,17 +36,6 @@ export interface MLStatus {
   accuracyChange: number
   nextUpdate: string
   source: string
-}
-
-export interface Lot {
-  id: string
-  name: string
-  crop: string
-  area: number
-  status: "Sembrado" | "Crecimiento" | "Cosechado" | "Barbecho"
-  ndvi: number
-  predictedYield: number | null
-  lastUpdated: string
 }
 
 export interface LotYieldRecord {
@@ -83,16 +63,6 @@ export interface HistoricalYield {
   predicted: number | null
 }
 
-export interface SoilMetric {
-  id: string
-  title: string
-  value: string
-  unit: string
-  status: "Óptimo" | "Normal" | "Alto" | "Ideal" | "Moderado" | "Bajo"
-  description: string
-  trend: string
-}
-
 export interface NDVITrend {
   month: string
   ndvi: number
@@ -100,37 +70,8 @@ export interface NDVITrend {
 }
 
 // ==============================================
-// DASHBOARD API
+// DASHBOARD API (mock)
 // ==============================================
-
-export async function getDashboardMetrics(): Promise<DashboardMetric[]> {
-  return delay([
-    {
-      id: "area",
-      title: "Área Total",
-      value: "1,250",
-      unit: "hectáreas",
-      change: "+12%",
-      changeType: "positive",
-    },
-    {
-      id: "lots",
-      title: "Lotes Activos",
-      value: "24",
-      unit: "lotes",
-      change: "+3",
-      changeType: "positive",
-    },
-    {
-      id: "yield",
-      title: "Rendimiento Promedio",
-      value: "4.2",
-      unit: "ton/ha",
-      change: "+8%",
-      changeType: "positive",
-    },
-  ])
-}
 
 export async function getYieldComparison(): Promise<YieldComparison[]> {
   return delay([
@@ -163,29 +104,10 @@ export async function getMLStatus(): Promise<MLStatus> {
 }
 
 // ==============================================
-// LOTS API
+// LOT YIELD HISTORY (mock — schema lacks year/season/crop)
 // ==============================================
 
-export async function fetchLots(): Promise<Lot[]> {
-  return delay([
-    { id: "A1", name: "Lote A1", crop: "Soja", area: 85, status: "Sembrado", ndvi: 0.78, predictedYield: 3.4, lastUpdated: "2026-03-26" },
-    { id: "A2", name: "Lote A2", crop: "Maíz", area: 120, status: "Crecimiento", ndvi: 0.82, predictedYield: 9.8, lastUpdated: "2026-03-26" },
-    { id: "B1", name: "Lote B1", crop: "Trigo", area: 95, status: "Cosechado", ndvi: 0.15, predictedYield: 4.1, lastUpdated: "2026-03-25" },
-    { id: "B2", name: "Lote B2", crop: "Soja", area: 110, status: "Sembrado", ndvi: 0.65, predictedYield: 3.1, lastUpdated: "2026-03-26" },
-    { id: "C1", name: "Lote C1", crop: "Girasol", area: 75, status: "Barbecho", ndvi: 0.22, predictedYield: null, lastUpdated: "2026-03-24" },
-    { id: "C2", name: "Lote C2", crop: "Maíz", area: 140, status: "Crecimiento", ndvi: 0.88, predictedYield: 10.2, lastUpdated: "2026-03-26" },
-    { id: "D1", name: "Lote D1", crop: "Soja", area: 90, status: "Sembrado", ndvi: 0.71, predictedYield: 3.2, lastUpdated: "2026-03-26" },
-    { id: "D2", name: "Lote D2", crop: "Trigo", area: 105, status: "Crecimiento", ndvi: 0.75, predictedYield: 4.5, lastUpdated: "2026-03-26" },
-  ])
-}
-
-export async function getLotById(id: string): Promise<Lot | null> {
-  const lots = await fetchLots()
-  return lots.find((lot) => lot.id === id) || null
-}
-
 export async function getLotYieldHistory(lotId: string): Promise<LotYieldRecord[]> {
-  // Mock yield history data per lot
   const mockHistories: Record<string, LotYieldRecord[]> = {
     "A1": [
       { year: 2023, season: "2022/2023", crop: "Soja", actualYield: 3.1, area: 85, totalProduction: 263.5, predictedYield: 3.0, accuracy: 96.7 },
@@ -193,53 +115,13 @@ export async function getLotYieldHistory(lotId: string): Promise<LotYieldRecord[
       { year: 2025, season: "2024/2025", crop: "Trigo", actualYield: 4.0, area: 85, totalProduction: 340, predictedYield: 3.8, accuracy: 95.0 },
       { year: 2026, season: "2025/2026", crop: "Soja", actualYield: 0, area: 85, totalProduction: 0, predictedYield: 3.4, accuracy: null },
     ],
-    "A2": [
-      { year: 2023, season: "2022/2023", crop: "Maíz", actualYield: 8.8, area: 120, totalProduction: 1056, predictedYield: 8.5, accuracy: 96.6 },
-      { year: 2024, season: "2023/2024", crop: "Soja", actualYield: 3.2, area: 120, totalProduction: 384, predictedYield: 3.1, accuracy: 96.9 },
-      { year: 2025, season: "2024/2025", crop: "Maíz", actualYield: 9.5, area: 120, totalProduction: 1140, predictedYield: 9.2, accuracy: 96.8 },
-      { year: 2026, season: "2025/2026", crop: "Maíz", actualYield: 0, area: 120, totalProduction: 0, predictedYield: 9.8, accuracy: null },
-    ],
-    "B1": [
-      { year: 2023, season: "2022/2023", crop: "Trigo", actualYield: 3.8, area: 95, totalProduction: 361, predictedYield: 3.6, accuracy: 94.7 },
-      { year: 2024, season: "2023/2024", crop: "Soja", actualYield: 2.9, area: 95, totalProduction: 275.5, predictedYield: 3.0, accuracy: 96.7 },
-      { year: 2025, season: "2024/2025", crop: "Trigo", actualYield: 4.1, area: 95, totalProduction: 389.5, predictedYield: 4.0, accuracy: 97.6 },
-    ],
-    "B2": [
-      { year: 2023, season: "2022/2023", crop: "Soja", actualYield: 2.8, area: 110, totalProduction: 308, predictedYield: 2.9, accuracy: 96.6 },
-      { year: 2024, season: "2023/2024", crop: "Maíz", actualYield: 8.5, area: 110, totalProduction: 935, predictedYield: 8.2, accuracy: 96.5 },
-      { year: 2025, season: "2024/2025", crop: "Soja", actualYield: 3.0, area: 110, totalProduction: 330, predictedYield: 2.9, accuracy: 96.7 },
-      { year: 2026, season: "2025/2026", crop: "Soja", actualYield: 0, area: 110, totalProduction: 0, predictedYield: 3.1, accuracy: null },
-    ],
-    "C1": [
-      { year: 2023, season: "2022/2023", crop: "Girasol", actualYield: 2.1, area: 75, totalProduction: 157.5, predictedYield: 2.0, accuracy: 95.2 },
-      { year: 2024, season: "2023/2024", crop: "Soja", actualYield: 2.7, area: 75, totalProduction: 202.5, predictedYield: 2.8, accuracy: 96.4 },
-      { year: 2025, season: "2024/2025", crop: "Girasol", actualYield: 2.3, area: 75, totalProduction: 172.5, predictedYield: 2.2, accuracy: 95.7 },
-    ],
-    "C2": [
-      { year: 2023, season: "2022/2023", crop: "Maíz", actualYield: 9.0, area: 140, totalProduction: 1260, predictedYield: 8.8, accuracy: 97.7 },
-      { year: 2024, season: "2023/2024", crop: "Trigo", actualYield: 4.2, area: 140, totalProduction: 588, predictedYield: 4.0, accuracy: 95.2 },
-      { year: 2025, season: "2024/2025", crop: "Maíz", actualYield: 9.8, area: 140, totalProduction: 1372, predictedYield: 9.5, accuracy: 96.9 },
-      { year: 2026, season: "2025/2026", crop: "Maíz", actualYield: 0, area: 140, totalProduction: 0, predictedYield: 10.2, accuracy: null },
-    ],
-    "D1": [
-      { year: 2023, season: "2022/2023", crop: "Soja", actualYield: 3.0, area: 90, totalProduction: 270, predictedYield: 2.9, accuracy: 96.6 },
-      { year: 2024, season: "2023/2024", crop: "Maíz", actualYield: 8.9, area: 90, totalProduction: 801, predictedYield: 8.7, accuracy: 97.7 },
-      { year: 2025, season: "2024/2025", crop: "Soja", actualYield: 3.1, area: 90, totalProduction: 279, predictedYield: 3.0, accuracy: 96.8 },
-      { year: 2026, season: "2025/2026", crop: "Soja", actualYield: 0, area: 90, totalProduction: 0, predictedYield: 3.2, accuracy: null },
-    ],
-    "D2": [
-      { year: 2023, season: "2022/2023", crop: "Trigo", actualYield: 3.9, area: 105, totalProduction: 409.5, predictedYield: 3.7, accuracy: 94.9 },
-      { year: 2024, season: "2023/2024", crop: "Soja", actualYield: 3.1, area: 105, totalProduction: 325.5, predictedYield: 3.0, accuracy: 96.8 },
-      { year: 2025, season: "2024/2025", crop: "Trigo", actualYield: 4.3, area: 105, totalProduction: 451.5, predictedYield: 4.1, accuracy: 95.3 },
-      { year: 2026, season: "2025/2026", crop: "Trigo", actualYield: 0, area: 105, totalProduction: 0, predictedYield: 4.5, accuracy: null },
-    ],
   }
-  
+  void lotId
   return delay(mockHistories[lotId] || [])
 }
 
 // ==============================================
-// SATELLITE API
+// SATELLITE API (mock)
 // ==============================================
 
 export async function getSatelliteLayers(): Promise<SatelliteLayer[]> {
@@ -256,7 +138,7 @@ export async function getMLAnalysisProgress(): Promise<{ status: string; progres
 }
 
 // ==============================================
-// ANALYTICS API
+// ANALYTICS API (mock)
 // ==============================================
 
 export async function getHistoricalYields(): Promise<HistoricalYield[]> {
@@ -267,19 +149,6 @@ export async function getHistoricalYields(): Promise<HistoricalYield[]> {
     { year: "2024", soja: 3.2, maiz: 9.4, trigo: 4.1, predicted: null },
     { year: "2025", soja: 3.1, maiz: 9.6, trigo: 4.2, predicted: null },
     { year: "2026", soja: null, maiz: null, trigo: null, predicted: 3.4 },
-  ])
-}
-
-export async function getSoilMetrics(lotId: string): Promise<SoilMetric[]> {
-  // In production, lotId would be used to fetch specific lot data
-  void lotId
-  return delay([
-    { id: "ph", title: "pH del Suelo", value: "6.8", unit: "", status: "Óptimo", description: "Rango ideal: 6.0 - 7.5", trend: "+0.2 vs temporada anterior" },
-    { id: "moisture", title: "Humedad", value: "42", unit: "%", status: "Normal", description: "Capacidad de campo", trend: "Estable" },
-    { id: "nitrogen", title: "Nitrógeno", value: "85", unit: "ppm", status: "Alto", description: "Nivel de N disponible", trend: "+12 ppm este mes" },
-    { id: "temp", title: "Temperatura Suelo", value: "22", unit: "°C", status: "Ideal", description: "A 10cm de profundidad", trend: "+3°C vs mes anterior" },
-    { id: "phosphorus", title: "Fósforo", value: "28", unit: "ppm", status: "Moderado", description: "Nivel de P disponible", trend: "-5 ppm (aplicar)" },
-    { id: "potassium", title: "Potasio", value: "156", unit: "ppm", status: "Óptimo", description: "Nivel de K disponible", trend: "Estable" },
   ])
 }
 
@@ -298,42 +167,4 @@ export async function getNDVITrend(): Promise<NDVITrend[]> {
     { month: "Nov", ndvi: 0.50, optimal: 0.65 },
     { month: "Dic", ndvi: 0.58, optimal: 0.72 },
   ])
-}
-
-// ==============================================
-// SETTINGS API
-// ==============================================
-
-export interface UserProfile {
-  firstName: string
-  lastName: string
-  email: string
-  avatar: string | null
-}
-
-export interface FarmSettings {
-  name: string
-  size: number
-  location: string
-  timezone: string
-  currency: string
-}
-
-export async function getUserProfile(): Promise<UserProfile> {
-  return delay({
-    firstName: "Juan",
-    lastName: "Martinez",
-    email: "juan@agrosmart.com",
-    avatar: null,
-  })
-}
-
-export async function getFarmSettings(): Promise<FarmSettings> {
-  return delay({
-    name: "Estancia La Esperanza",
-    size: 1250,
-    location: "Pergamino, Buenos Aires, Argentina",
-    timezone: "america-buenos-aires",
-    currency: "ars",
-  })
 }

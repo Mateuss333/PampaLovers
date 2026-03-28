@@ -22,7 +22,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Search, Filter, MoreHorizontal, Eye, Pencil, Trash2 } from "lucide-react"
-import { fetchLots, type Lot } from "@/lib/api"
+import { fetchLots, getUserFarm, type Lot } from "@/lib/supabase-api"
 import { NewLotForm } from "@/components/new-lot-form"
 
 const statusColors: Record<string, string> = {
@@ -57,17 +57,32 @@ function TableSkeleton() {
 
 export default function LotesPage() {
   const [lots, setLots] = useState<Lot[] | null>(null)
+  const [farmId, setFarmId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
 
+  async function refreshLots() {
+    const data = await fetchLots()
+    setLots(data)
+  }
+
   useEffect(() => {
-    async function loadLots() {
+    async function loadData() {
       setLoading(true)
-      const data = await fetchLots()
-      setLots(data)
+      try {
+        const [lotsData, farm] = await Promise.all([
+          fetchLots(),
+          getUserFarm(),
+        ])
+        setLots(lotsData)
+        if (farm) setFarmId(farm.id)
+      } catch (err) {
+        console.error("Error loading lots:", err)
+        setLots([])
+      }
       setLoading(false)
     }
-    loadLots()
+    loadData()
   }, [])
 
   const filteredLots = lots?.filter(
@@ -87,7 +102,7 @@ export default function LotesPage() {
               Gestiona y monitorea todos tus lotes agrícolas
             </p>
           </div>
-          <NewLotForm />
+          <NewLotForm farmId={farmId} onSuccess={refreshLots} />
         </div>
 
         {/* Table Card */}

@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 import { Separator } from "@/components/ui/separator"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select,
@@ -19,16 +18,20 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { User, Building2, MapPin, Cpu } from "lucide-react"
-import { getUserProfile, getFarmSettings, type UserProfile, type FarmSettings } from "@/lib/api"
+import {
+  getUserProfile,
+  getFarmSettings,
+  updateProfile,
+  updateFarm,
+  type FarmSettings,
+} from "@/lib/supabase-api"
 
 export default function SettingsPage() {
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [farmSettings, setFarmSettings] = useState<FarmSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  const [firstName, setFirstName] = useState("")
-  const [lastName, setLastName] = useState("")
+  const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [farmName, setFarmName] = useState("")
   const [farmSize, setFarmSize] = useState("")
@@ -39,20 +42,24 @@ export default function SettingsPage() {
   useEffect(() => {
     async function loadData() {
       setLoading(true)
-      const [profile, farm] = await Promise.all([
-        getUserProfile(),
-        getFarmSettings(),
-      ])
-      setUserProfile(profile)
-      setFarmSettings(farm)
-      setFirstName(profile.firstName)
-      setLastName(profile.lastName)
-      setEmail(profile.email)
-      setFarmName(farm.name)
-      setFarmSize(String(farm.size))
-      setLocation(farm.location)
-      setTimezone(farm.timezone)
-      setCurrency(farm.currency)
+      try {
+        const [profile, farm] = await Promise.all([
+          getUserProfile(),
+          getFarmSettings(),
+        ])
+        setFarmSettings(farm)
+        setName(profile.name)
+        setEmail(profile.email)
+        if (farm) {
+          setFarmName(farm.name)
+          setFarmSize(String(farm.size))
+          setLocation(farm.location)
+          setTimezone(farm.timezone)
+          setCurrency(farm.currency)
+        }
+      } catch (err) {
+        console.error("Error loading settings:", err)
+      }
       setLoading(false)
     }
     loadData()
@@ -61,9 +68,24 @@ export default function SettingsPage() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
-    await new Promise((r) => setTimeout(r, 450))
+    try {
+      await updateProfile({ name, email })
+      if (farmSettings) {
+        await updateFarm(farmSettings.id, {
+          name: farmName,
+          location_name: location,
+          size_ha: farmSize ? parseFloat(farmSize) : undefined,
+          timezone,
+          currency,
+        })
+      }
+      toast.success("Cambios guardados")
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Error al guardar los cambios",
+      )
+    }
     setSaving(false)
-    toast.success("Cambios guardados")
   }
 
   return (
@@ -94,63 +116,18 @@ export default function SettingsPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="flex items-center gap-4">
-                  {loading ? (
-                    <>
-                      <Skeleton className="h-16 w-16 rounded-full" />
-                      <div>
-                        <Skeleton className="h-8 w-24 mb-1" />
-                        <Skeleton className="h-3 w-32" />
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <Avatar className="h-16 w-16 border border-border">
-                        <AvatarImage src={userProfile?.avatar || "/avatars/01.png"} alt="Usuario" />
-                        <AvatarFallback className="bg-primary text-primary-foreground text-lg font-medium">
-                          {userProfile?.firstName?.[0]}{userProfile?.lastName?.[0]}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <Button type="button" variant="outline" size="sm">
-                          Cambiar foto
-                        </Button>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          JPG, PNG. Max 2MB.
-                        </p>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <Separator />
-
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName" className="text-foreground">Nombre</Label>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="name" className="text-foreground">Nombre Completo</Label>
                     {loading ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
                       <Input
-                        id="firstName"
-                        value={firstName}
-                        onChange={(e) => setFirstName(e.target.value)}
+                        id="name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
                         className="bg-background"
-                        autoComplete="given-name"
-                      />
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName" className="text-foreground">Apellido</Label>
-                    {loading ? (
-                      <Skeleton className="h-10 w-full" />
-                    ) : (
-                      <Input
-                        id="lastName"
-                        value={lastName}
-                        onChange={(e) => setLastName(e.target.value)}
-                        className="bg-background"
-                        autoComplete="family-name"
+                        autoComplete="name"
                       />
                     )}
                   </div>

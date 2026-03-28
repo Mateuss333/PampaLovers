@@ -29,12 +29,16 @@ import {
 import { TrendingUp, Droplets, FlaskConical, Thermometer, Cpu } from "lucide-react"
 import {
   getHistoricalYields,
-  getSoilMetrics,
   getNDVITrend,
   type HistoricalYield,
-  type SoilMetric,
   type NDVITrend,
 } from "@/lib/api"
+import {
+  fetchLots,
+  getSoilMetrics,
+  type Lot,
+  type SoilMetric,
+} from "@/lib/supabase-api"
 
 const statusColors: Record<string, string> = {
   "Óptimo": "bg-primary/10 text-primary border-primary/20",
@@ -56,7 +60,8 @@ const iconMap: Record<string, typeof FlaskConical> = {
 
 export default function AnalyticsPage() {
   const [selectedCrop, setSelectedCrop] = useState("all")
-  const [selectedLot, setSelectedLot] = useState("A1")
+  const [lots, setLots] = useState<Lot[]>([])
+  const [selectedLot, setSelectedLot] = useState<string | null>(null)
   const [historicalYields, setHistoricalYields] = useState<HistoricalYield[] | null>(null)
   const [soilMetrics, setSoilMetrics] = useState<SoilMetric[] | null>(null)
   const [ndviTrend, setNDVITrend] = useState<NDVITrend[] | null>(null)
@@ -65,17 +70,33 @@ export default function AnalyticsPage() {
   useEffect(() => {
     async function loadData() {
       setLoading(true)
-      const [yieldsData, soilData, ndviData] = await Promise.all([
-        getHistoricalYields(),
-        getSoilMetrics(selectedLot),
-        getNDVITrend(),
-      ])
-      setHistoricalYields(yieldsData)
-      setSoilMetrics(soilData)
-      setNDVITrend(ndviData)
+      try {
+        const [yieldsData, ndviData, lotsData] = await Promise.all([
+          getHistoricalYields(),
+          getNDVITrend(),
+          fetchLots(),
+        ])
+        setHistoricalYields(yieldsData)
+        setNDVITrend(ndviData)
+        setLots(lotsData)
+        if (lotsData.length > 0) {
+          setSelectedLot(lotsData[0].id)
+        }
+      } catch (err) {
+        console.error("Error loading analytics:", err)
+      }
       setLoading(false)
     }
     loadData()
+  }, [])
+
+  useEffect(() => {
+    if (!selectedLot) return
+    async function loadSoil() {
+      const soilData = await getSoilMetrics(selectedLot!)
+      setSoilMetrics(soilData)
+    }
+    loadSoil()
   }, [selectedLot])
 
   return (
@@ -295,22 +316,23 @@ export default function AnalyticsPage() {
           {/* SOIL TAB */}
           <TabsContent value="soil" className="space-y-6">
             <div className="flex items-center gap-2">
-              <Select value={selectedLot} onValueChange={setSelectedLot}>
-                <SelectTrigger className="w-[160px] bg-card">
+              <Select value={selectedLot ?? ""} onValueChange={setSelectedLot}>
+                <SelectTrigger className="w-[200px] bg-card">
                   <SelectValue placeholder="Seleccionar lote" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="A1">Lote A1</SelectItem>
-                  <SelectItem value="A2">Lote A2</SelectItem>
-                  <SelectItem value="B1">Lote B1</SelectItem>
-                  <SelectItem value="B2">Lote B2</SelectItem>
-                  <SelectItem value="C1">Lote C1</SelectItem>
-                  <SelectItem value="C2">Lote C2</SelectItem>
+                  {lots.map((lot) => (
+                    <SelectItem key={lot.id} value={lot.id}>
+                      {lot.name}
+                    </SelectItem>
+                  ))}
+                  {lots.length === 0 && (
+                    <SelectItem value="_none" disabled>
+                      Sin lotes registrados
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
-              <span className="text-sm text-muted-foreground">
-                Última muestra: 15 Mar 2026
-              </span>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
