@@ -63,6 +63,8 @@ export interface DbPlot {
   group: number
   /** jsonb: [[lon, lat], ...] contorno guardado en BD */
   polygon?: unknown | null
+  /** GeoJSON Polygon (type + coordinates); columna en BD: "geoJSON" */
+  geoJSON?: unknown | null
 }
 
 type DbPlotWithFarm = DbPlot & {
@@ -384,6 +386,30 @@ function roundGeographicCoord(value: number, decimals: number): number {
   return Math.round(value * f) / f
 }
 
+/**
+ * Convierte vértices [lon, lat] (como en el mapa del form) a GeoJSON Polygon RFC 7946.
+ * Cierra el anillo exterior si hace falta; misma precisión que lat/lon del insert.
+ */
+function lotPolygonToGeoJsonPolygon(
+  parsed: LotPolygon,
+): { type: "Polygon"; coordinates: number[][][] } | null {
+  if (parsed.length < 3) return null
+  const ring = parsed.map(([lon, lat]) => [
+    roundGeographicCoord(lon, 6),
+    roundGeographicCoord(lat, 6),
+  ])
+  const first = ring[0]
+  const last = ring[ring.length - 1]
+  const closed =
+    first[0] === last[0] && first[1] === last[1]
+      ? ring
+      : [...ring, [first[0], first[1]]]
+  return {
+    type: "Polygon",
+    coordinates: [closed],
+  }
+}
+
 export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
   const supabase = createClient()
   const {
@@ -405,6 +431,7 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
     latitude?: number
     longitude?: number
     polygon?: LotPolygon
+    geoJSON?: { type: "Polygon"; coordinates: number[][][] }
     soil_ph?: number
     irrigation_type?: string
     fertilizer_type?: string
@@ -435,7 +462,11 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
   }
   if (input.polygon && input.polygon.length >= 3) {
     const parsed = parsePlotPolygon(input.polygon)
-    if (parsed) row.polygon = parsed
+    if (parsed) {
+      row.polygon = parsed
+      const gj = lotPolygonToGeoJsonPolygon(parsed)
+      if (gj) row.geoJSON = gj
+    }
   }
   if (input.soil_ph != null && Number.isFinite(input.soil_ph)) {
     row.soil_ph = input.soil_ph
