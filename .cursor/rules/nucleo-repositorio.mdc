@@ -1,0 +1,11 @@
+---
+description: Estándar de trabajo del agente en el repo (alcance, estilo, pruebas)
+alwaysApply: true
+---
+
+# Núcleo del repositorio
+
+- **Alcance**: Cambiar solo lo necesario para la tarea. Sin refactors o archivos colaterales no pedidos.
+- **Contexto**: Leer código cercano y convenciones del proyecto antes de escribir. Reutilizar utilidades y patrones existentes.
+- **Calidad**: Si el repo tiene tests o linters documentados, ejecutarlos o al menos no ignorar fallos obvios al terminar.
+- **Compatibilidad**: No asumir SO o rutas absolutas del desarrollador; preferir rutas relativas y scripts portables cuando aplique.

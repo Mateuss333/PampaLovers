@@ -1,0 +1,10 @@
+---
+description: Cuándo actualizar README, changelog o docs al cambiar comportamiento
+alwaysApply: true
+---
+
+# Documentación ante cambios de comportamiento
+
+- Si el cambio altera cómo se instala, configura, ejecuta o despliega el proyecto, actualizar **README** o la doc oficial que el repo use.
+- Si hay **CHANGELOG** o notas de versión, añadir una entrada breve para cambios visibles para usuarios o integradores.
+- No crear ni expandir documentación genérica no solicitada; solo lo que desbloquee el cambio o evite confusiones.
