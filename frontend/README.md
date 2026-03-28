@@ -29,6 +29,15 @@ La ruta `/satelite` usa [Leaflet](https://leafletjs.com/) con teselas públicas.
 
 Leaflet se carga en el cliente con import dinámico dentro de `components/satellite-map.tsx`.
 
+## Eliminar cuenta (Supabase)
+
+La página **Configuración** llama a la Edge Function **`delete-account`** para borrar el usuario de Auth con `auth.admin.deleteUser` (requiere **service role** en el servidor, no en el cliente).
+
+1. Desplegá la función: `supabase functions deploy delete-account` (desde la carpeta del proyecto Supabase).
+2. Configurá el secret **`SUPABASE_SERVICE_ROLE_KEY`** para las Edge Functions (Dashboard de Supabase → Edge Functions → Secrets, o `supabase secrets set SUPABASE_SERVICE_ROLE_KEY=...`). **No** subas esa clave al repositorio.
+
+Sin el secret, la función responde error y el botón mostrará un mensaje acorde.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More

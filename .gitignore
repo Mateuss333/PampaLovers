@@ -20,6 +20,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# Supabase CLI (caché local del proyecto vinculado; no versionar)
+supabase/.temp/
+
 # OS / editor
 .DS_Store
 Thumbs.db

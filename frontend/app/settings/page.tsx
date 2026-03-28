@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,7 +18,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { User, Building2, MapPin, Cpu } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { User, Building2, MapPin } from "lucide-react"
 import {
   getUserProfile,
   getFarmSettings,
@@ -25,8 +34,12 @@ import {
   updateFarm,
   type FarmSettings,
 } from "@/lib/supabase-api"
+import { createClient } from "@/lib/supabase/client"
+
+const DELETE_ACCOUNT_PHRASE = "ELIMINAR"
 
 export default function SettingsPage() {
+  const router = useRouter()
   const [farmSettings, setFarmSettings] = useState<FarmSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -38,6 +51,10 @@ export default function SettingsPage() {
   const [location, setLocation] = useState("")
   const [timezone, setTimezone] = useState("")
   const [currency, setCurrency] = useState("")
+
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false)
+  const [deleteAccountInput, setDeleteAccountInput] = useState("")
+  const [deleteAccountLoading, setDeleteAccountLoading] = useState(false)
 
   useEffect(() => {
     async function loadData() {
@@ -86,6 +103,54 @@ export default function SettingsPage() {
       )
     }
     setSaving(false)
+  }
+
+  async function handleDeleteAccount() {
+    if (deleteAccountInput.trim() !== DELETE_ACCOUNT_PHRASE) {
+      toast.error(`Escribí ${DELETE_ACCOUNT_PHRASE} para confirmar`)
+      return
+    }
+    setDeleteAccountLoading(true)
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase.functions.invoke("delete-account", {
+        method: "POST",
+      })
+
+      if (error) {
+        let message = error.message
+        try {
+          const body = await error.context.json() as { error?: string }
+          if (body?.error) message = body.error
+        } catch {
+          /* usar message por defecto */
+        }
+        toast.error(message)
+        return
+      }
+
+      if (
+        data &&
+        typeof data === "object" &&
+        "error" in data &&
+        data.error != null
+      ) {
+        toast.error(String(data.error))
+        return
+      }
+
+      toast.success("Cuenta eliminada")
+      setDeleteAccountOpen(false)
+      setDeleteAccountInput("")
+      await supabase.auth.signOut()
+      router.push("/login")
+      router.refresh()
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "No se pudo eliminar la cuenta",
+      )
+    }
+    setDeleteAccountLoading(false)
   }
 
   return (
@@ -271,31 +336,6 @@ export default function SettingsPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* ML Settings */}
-            <Card className="border-border/60">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <Cpu className="h-5 w-5 text-accent" />
-                  <CardTitle className="text-base text-foreground">Configuración ML</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-foreground">Frecuencia de Análisis</Label>
-                  <Select defaultValue="daily">
-                    <SelectTrigger className="bg-background">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="realtime">Tiempo real</SelectItem>
-                      <SelectItem value="daily">Diario</SelectItem>
-                      <SelectItem value="weekly">Semanal</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-
             {/* Quick Stats */}
             <Card className="border-border/60">
               <CardHeader>
@@ -337,6 +377,10 @@ export default function SettingsPage() {
                   type="button"
                   variant="outline"
                   className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
+                  onClick={() => {
+                    setDeleteAccountInput("")
+                    setDeleteAccountOpen(true)
+                  }}
                 >
                   Eliminar cuenta
                 </Button>
@@ -345,6 +389,60 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      <Dialog
+        open={deleteAccountOpen}
+        onOpenChange={(open) => {
+          setDeleteAccountOpen(open)
+          if (!open) setDeleteAccountInput("")
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Eliminar cuenta</DialogTitle>
+            <DialogDescription>
+              Se borrará tu usuario y los datos asociados en la base. Esta acción no se puede
+              deshacer. Escribí{" "}
+              <span className="font-mono font-semibold text-foreground">{DELETE_ACCOUNT_PHRASE}</span>{" "}
+              para confirmar.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="delete-confirm" className="text-foreground">
+              Confirmación
+            </Label>
+            <Input
+              id="delete-confirm"
+              value={deleteAccountInput}
+              onChange={(e) => setDeleteAccountInput(e.target.value)}
+              placeholder={DELETE_ACCOUNT_PHRASE}
+              className="bg-background"
+              autoComplete="off"
+              disabled={deleteAccountLoading}
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteAccountOpen(false)}
+              disabled={deleteAccountLoading}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void handleDeleteAccount()}
+              disabled={
+                deleteAccountLoading || deleteAccountInput.trim() !== DELETE_ACCOUNT_PHRASE
+              }
+            >
+              {deleteAccountLoading ? "Eliminando…" : "Eliminar definitivamente"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 }

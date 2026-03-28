@@ -1,9 +1,10 @@
 // ==============================================
 // MOCK API SERVICE LAYER (funciones sin backing DB)
 // ==============================================
-// Las funciones con datos reales fueron migradas a supabase-api.ts.
-// Este archivo conserva solo mocks para ML, satellite, yields historicos
-// y actividades, que aun no tienen tablas en la base de datos.
+// Las funciones con datos reales fueron migradas a supabase-api.ts
+// (incluye rendimiento por cultivo en el dashboard).
+// Este archivo conserva mocks para satélite, yields históricos de analytics
+// y actividades, que aún no tienen tablas en la base de datos.
 
 const SIMULATED_DELAY = 500 // ms
 
@@ -15,27 +16,11 @@ function delay<T>(data: T): Promise<T> {
 // TYPES
 // ==============================================
 
-export interface YieldComparison {
-  crop: string
-  estimated: number
-  actual: number
-  predicted: number
-}
-
 export interface Activity {
   id: number
   message: string
   time: string
   type: "success" | "warning" | "info"
-}
-
-export interface MLStatus {
-  imagesProcessed: number
-  imagesToday: number
-  accuracy: number
-  accuracyChange: number
-  nextUpdate: string
-  source: string
 }
 
 export interface LotYieldRecord {
@@ -70,17 +55,8 @@ export interface NDVITrend {
 }
 
 // ==============================================
-// DASHBOARD API (mock)
+// DASHBOARD / ACTIVIDAD (mock)
 // ==============================================
-
-export async function getYieldComparison(): Promise<YieldComparison[]> {
-  return delay([
-    { crop: "Soja", estimated: 3.2, actual: 3.0, predicted: 3.4 },
-    { crop: "Maíz", estimated: 9.5, actual: 8.8, predicted: 9.8 },
-    { crop: "Trigo", estimated: 4.1, actual: 3.9, predicted: 4.3 },
-    { crop: "Girasol", estimated: 2.4, actual: 2.2, predicted: 2.5 },
-  ])
-}
 
 export async function getRecentActivities(): Promise<Activity[]> {
   return delay([
@@ -90,17 +66,6 @@ export async function getRecentActivities(): Promise<Activity[]> {
     { id: 4, message: "Siembra completada en Lote C3", time: "Hace 3 horas", type: "success" },
     { id: 5, message: "Predicción actualizada para Zona Norte", time: "Hace 5 horas", type: "info" },
   ])
-}
-
-export async function getMLStatus(): Promise<MLStatus> {
-  return delay({
-    imagesProcessed: 147,
-    imagesToday: 23,
-    accuracy: 94.2,
-    accuracyChange: 1.2,
-    nextUpdate: "2h 34m",
-    source: "Sentinel-2",
-  })
 }
 
 // ==============================================
@@ -131,10 +96,6 @@ export async function getSatelliteLayers(): Promise<SatelliteLayer[]> {
     { id: "moisture", name: "Humedad", type: "moisture" },
     { id: "thermal", name: "Térmico", type: "thermal" },
   ])
-}
-
-export async function getMLAnalysisProgress(): Promise<{ status: string; progress: number }> {
-  return delay({ status: "Procesando", progress: 78 })
 }
 
 // ==============================================

@@ -124,3 +124,29 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+/* Leaflet: etiqueta con nombre del lote (centroide del polígono) */
+.leaflet-container .satellite-plot-label-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+.leaflet-container .satellite-plot-label-chip {
+  position: relative;
+  transform: translate(-50%, -50%);
+  max-width: 9rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  color: oklch(0.22 0.06 145);
+  background: color-mix(in oklch, oklch(0.99 0.003 55) 92%, transparent);
+  border: 1px solid color-mix(in oklch, oklch(0.45 0.12 145) 45%, transparent);
+  box-shadow: 0 1px 3px color-mix(in oklch, oklch(0.18 0.03 145) 18%, transparent);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
