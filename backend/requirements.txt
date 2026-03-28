@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+pydantic
+flask
+tensorflow
+keras
+pandas
+numpy
+pyyaml
+h5py
+supabase
+joblib
+pandas
+numpy
+asyncio
