@@ -1,13 +1,10 @@
-function readEnvValue(name: string) {
-  return process.env[name]?.trim()
-}
-
+// Referencias estáticas a process.env: Next.js no inyecta NEXT_PUBLIC_* con process.env[name] en el cliente.
 export function getSupabaseBrowserEnv() {
-  const supabaseUrl = readEnvValue("NEXT_PUBLIC_SUPABASE_URL")
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
   const supabasePublishableKey =
-    readEnvValue("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") ??
-    readEnvValue("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY") ??
-    readEnvValue("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ??
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY?.trim() ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
 
   if (!supabaseUrl) {
     throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL in frontend/.env.local")
