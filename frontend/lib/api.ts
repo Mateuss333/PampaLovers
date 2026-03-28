@@ -47,6 +47,9 @@ export interface MLStatus {
   source: string
 }
 
+/** Cuatro vértices del contorno en GeoJSON [longitud, latitud] (sin repetir el primero al cerrar). */
+export type LotPolygon = [number, number][]
+
 export interface Lot {
   id: string
   name: string
@@ -56,6 +59,40 @@ export interface Lot {
   ndvi: number
   predictedYield: number | null
   lastUpdated: string
+  polygon?: LotPolygon
+}
+
+/** Rectángulos mock alrededor de la Pampa para demo / mapa satelital hasta API real. */
+const MOCK_PAMPA_LAT = -34.2
+const MOCK_PAMPA_LON = -61.5
+const MOCK_STEP_LON = 0.085
+const MOCK_STEP_LAT = 0.072
+const MOCK_BOX_DLON = 0.055
+const MOCK_BOX_DLAT = 0.048
+
+const MOCK_LOT_GRID: Record<string, [number, number]> = {
+  A1: [0, 0],
+  A2: [1, 0],
+  B1: [2, 0],
+  B2: [3, 0],
+  C1: [0, 1],
+  C2: [1, 1],
+  D1: [2, 1],
+  D2: [3, 1],
+}
+
+function mockLotPolygon(id: string): LotPolygon | undefined {
+  const g = MOCK_LOT_GRID[id]
+  if (!g) return undefined
+  const [ix, iy] = g
+  const lon0 = MOCK_PAMPA_LON + ix * MOCK_STEP_LON
+  const lat0 = MOCK_PAMPA_LAT + iy * MOCK_STEP_LAT
+  return [
+    [lon0, lat0],
+    [lon0 + MOCK_BOX_DLON, lat0],
+    [lon0 + MOCK_BOX_DLON, lat0 + MOCK_BOX_DLAT],
+    [lon0, lat0 + MOCK_BOX_DLAT],
+  ]
 }
 
 export interface LotYieldRecord {
@@ -166,16 +203,21 @@ export async function getMLStatus(): Promise<MLStatus> {
 // LOTS API
 // ==============================================
 
+function lotWithPolygon(partial: Omit<Lot, "polygon">): Lot {
+  const polygon = mockLotPolygon(partial.id)
+  return polygon ? { ...partial, polygon } : partial
+}
+
 export async function fetchLots(): Promise<Lot[]> {
   return delay([
-    { id: "A1", name: "Lote A1", crop: "Soja", area: 85, status: "Sembrado", ndvi: 0.78, predictedYield: 3.4, lastUpdated: "2026-03-26" },
-    { id: "A2", name: "Lote A2", crop: "Maíz", area: 120, status: "Crecimiento", ndvi: 0.82, predictedYield: 9.8, lastUpdated: "2026-03-26" },
-    { id: "B1", name: "Lote B1", crop: "Trigo", area: 95, status: "Cosechado", ndvi: 0.15, predictedYield: 4.1, lastUpdated: "2026-03-25" },
-    { id: "B2", name: "Lote B2", crop: "Soja", area: 110, status: "Sembrado", ndvi: 0.65, predictedYield: 3.1, lastUpdated: "2026-03-26" },
-    { id: "C1", name: "Lote C1", crop: "Girasol", area: 75, status: "Barbecho", ndvi: 0.22, predictedYield: null, lastUpdated: "2026-03-24" },
-    { id: "C2", name: "Lote C2", crop: "Maíz", area: 140, status: "Crecimiento", ndvi: 0.88, predictedYield: 10.2, lastUpdated: "2026-03-26" },
-    { id: "D1", name: "Lote D1", crop: "Soja", area: 90, status: "Sembrado", ndvi: 0.71, predictedYield: 3.2, lastUpdated: "2026-03-26" },
-    { id: "D2", name: "Lote D2", crop: "Trigo", area: 105, status: "Crecimiento", ndvi: 0.75, predictedYield: 4.5, lastUpdated: "2026-03-26" },
+    lotWithPolygon({ id: "A1", name: "Lote A1", crop: "Soja", area: 85, status: "Sembrado", ndvi: 0.78, predictedYield: 3.4, lastUpdated: "2026-03-26" }),
+    lotWithPolygon({ id: "A2", name: "Lote A2", crop: "Maíz", area: 120, status: "Crecimiento", ndvi: 0.82, predictedYield: 9.8, lastUpdated: "2026-03-26" }),
+    lotWithPolygon({ id: "B1", name: "Lote B1", crop: "Trigo", area: 95, status: "Cosechado", ndvi: 0.15, predictedYield: 4.1, lastUpdated: "2026-03-25" }),
+    lotWithPolygon({ id: "B2", name: "Lote B2", crop: "Soja", area: 110, status: "Sembrado", ndvi: 0.65, predictedYield: 3.1, lastUpdated: "2026-03-26" }),
+    lotWithPolygon({ id: "C1", name: "Lote C1", crop: "Girasol", area: 75, status: "Barbecho", ndvi: 0.22, predictedYield: null, lastUpdated: "2026-03-24" }),
+    lotWithPolygon({ id: "C2", name: "Lote C2", crop: "Maíz", area: 140, status: "Crecimiento", ndvi: 0.88, predictedYield: 10.2, lastUpdated: "2026-03-26" }),
+    lotWithPolygon({ id: "D1", name: "Lote D1", crop: "Soja", area: 90, status: "Sembrado", ndvi: 0.71, predictedYield: 3.2, lastUpdated: "2026-03-26" }),
+    lotWithPolygon({ id: "D2", name: "Lote D2", crop: "Trigo", area: 105, status: "Crecimiento", ndvi: 0.75, predictedYield: 4.5, lastUpdated: "2026-03-26" }),
   ])
 }
 
