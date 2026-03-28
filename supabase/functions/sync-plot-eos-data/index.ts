@@ -9,6 +9,9 @@ import {
 import {
   fetchWeatherFromEos,
 } from "../fetch-plot-weather/index.ts";
+import {
+  resolvePlotDateRange,
+} from "../_shared/plot-date-range.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -17,7 +20,6 @@ const CORS_HEADERS = {
   "Content-Type": "application/json",
 } as const;
 
-const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -28,14 +30,15 @@ const UPDATABLE_FIELDS = [
   "rainfall_mm",
   "humidity_percent",
 ] as const;
+const SYNC_FUNCTION_VERSION = "2026-03-28-sowing-date";
 
 type UpdatableField = typeof UPDATABLE_FIELDS[number];
 type PlotPatch = Partial<Record<UpdatableField, number>>;
 
 interface RequestPayload {
   plotId: string;
-  dateFrom: string;
-  dateTo: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 interface AppConfig {
@@ -68,6 +71,7 @@ interface FetchPlotWeatherResponse {
 }
 
 type EosData = Record<UpdatableField, number | null>;
+type PlotLocation = Awaited<ReturnType<typeof getPlotLocation>>;
 
 class HttpError extends Error {
   constructor(
@@ -96,9 +100,28 @@ Deno.serve(async (request) => {
     const supabase = createSupabaseAdminClient(config);
 
     console.log("[sync-plot-eos-data] Incoming request", payload);
+    console.log("[sync-plot-eos-data] Version", SYNC_FUNCTION_VERSION);
 
     const currentPlot = await getPlotById(supabase, payload.plotId);
-    const eosData = await fetchEosData(supabase, payload);
+    const location = await getPlotLocation(supabase, payload.plotId);
+    const resolvedDateRange = resolvePlotDateRange(payload, {
+      sowingDate: location.sowingDate,
+    });
+
+    if (!resolvedDateRange.ok) {
+      throw new HttpError(resolvedDateRange.status, resolvedDateRange.message);
+    }
+
+    const { dateFrom, dateTo, source: dateSource } = resolvedDateRange.value;
+
+    console.log("[sync-plot-eos-data] Resolved date range", {
+      plotId: payload.plotId,
+      dateFrom,
+      dateTo,
+      dateSource,
+    });
+
+    const eosData = await fetchEosData(location, dateFrom, dateTo);
     const patch = getValidPatchFromEosData(eosData);
     const updatedFields = Object.keys(patch) as UpdatableField[];
 
@@ -113,8 +136,8 @@ Deno.serve(async (request) => {
 
     return jsonResponse(200, {
       plotId: payload.plotId,
-      dateFrom: payload.dateFrom,
-      dateTo: payload.dateTo,
+      dateFrom,
+      dateTo,
       eosData,
       updatedFields,
       updatedPlot: buildPlotSummary(updatedPlot),
@@ -183,31 +206,28 @@ async function parseRequestPayload(request: Request): Promise<RequestPayload> {
 
   if (
     typeof plotId !== "string" ||
-    typeof dateFrom !== "string" ||
-    typeof dateTo !== "string" ||
-    !plotId ||
-    !dateFrom ||
-    !dateTo
+    !plotId
   ) {
-    throw new HttpError(
-      400,
-      "Missing required parameters: plotId, dateFrom, dateTo.",
-    );
+    throw new HttpError(400, "Missing required parameter: plotId.");
+  }
+
+  if (dateFrom != null && typeof dateFrom !== "string") {
+    throw new HttpError(400, "dateFrom must be a string when provided.");
+  }
+
+  if (dateTo != null && typeof dateTo !== "string") {
+    throw new HttpError(400, "dateTo must be a string when provided.");
   }
 
   if (!UUID_REGEX.test(plotId)) {
     throw new HttpError(400, "plotId must be a valid UUID.");
   }
 
-  if (!isValidDateString(dateFrom) || !isValidDateString(dateTo)) {
-    throw new HttpError(400, "dateFrom and dateTo must use YYYY-MM-DD format.");
-  }
-
-  if (dateFrom > dateTo) {
-    throw new HttpError(400, "dateFrom must be less than or equal to dateTo.");
-  }
-
-  return { plotId, dateFrom, dateTo };
+  return {
+    plotId,
+    dateFrom: normalizeOptionalDateInput(dateFrom),
+    dateTo: normalizeOptionalDateInput(dateTo),
+  };
 }
 
 async function getPlotById(
@@ -237,15 +257,14 @@ async function getPlotById(
 }
 
 async function fetchEosData(
-  supabase: SupabaseClient,
-  payload: RequestPayload,
+  location: PlotLocation,
+  dateFrom: string,
+  dateTo: string,
 ): Promise<EosData> {
-  const location = await getPlotLocation(supabase, payload.plotId);
-
   const [ndviResponse, weatherResponse] = await Promise.all([
-    fetchNdviFromEos(location, payload.dateFrom, payload.dateTo)
+    fetchNdviFromEos(location, dateFrom, dateTo)
       .then((ndvi) => ({ ndvi }) satisfies FetchPlotNdviResponse),
-    fetchWeatherFromEos(location, payload.dateFrom, payload.dateTo)
+    fetchWeatherFromEos(location, dateFrom, dateTo)
       .then((weather) => ({ weather }) satisfies FetchPlotWeatherResponse),
   ]);
 
@@ -386,15 +405,6 @@ function normalizeNumber(value: unknown): number | null {
   return null;
 }
 
-function isValidDateString(value: string): boolean {
-  if (!DATE_REGEX.test(value)) {
-    return false;
-  }
-
-  const date = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
-
 function roundTo2Decimals(value: number): number {
   return Number(value.toFixed(2));
 }
@@ -427,6 +437,15 @@ function getErrorStatus(error: unknown): number | null {
   }
 
   return null;
+}
+
+function normalizeOptionalDateInput(value: string | undefined): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
 }
 
 function jsonResponse(status: number, payload: unknown): Response {

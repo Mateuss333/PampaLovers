@@ -50,7 +50,30 @@ export type SatelliteMapHandle = {
 type SatelliteMapProps = {
   mapType: "satellite" | "streets"
   className?: string
+  /** Polígonos visibles (p. ej. según toggles en la UI). */
   plots?: SatellitePlotOverlay[]
+  /** Todos los polígonos del usuario para «Ir a mis lotes» y flyTo; por defecto coincide con `plots`. */
+  navigationPlots?: SatellitePlotOverlay[]
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
+
+/** Centroide simple en lon/lat (suficiente para lotes pequeños). */
+function polygonCentroidLonLat(polygon: [number, number][]): [number, number] {
+  let lon = 0
+  let lat = 0
+  for (const [lo, la] of polygon) {
+    lon += lo
+    lat += la
+  }
+  const n = polygon.length
+  return [lon / n, lat / n]
 }
 
 function extendBoundsFromPolygon(
@@ -65,9 +88,16 @@ function extendBoundsFromPolygon(
 
 export const SatelliteMap = forwardRef<SatelliteMapHandle, SatelliteMapProps>(
   function SatelliteMap(
-    { mapType, className, plots: plotsProp = [] },
+    {
+      mapType,
+      className,
+      plots: plotsProp = [],
+      navigationPlots: navigationPlotsProp,
+    },
     ref
   ) {
+    const navigationPlots =
+      navigationPlotsProp !== undefined ? navigationPlotsProp : plotsProp
     const containerRef = useRef<HTMLDivElement>(null)
     const mapRef = useRef<LeafletMap | null>(null)
     const layerRef = useRef<TileLayer | null>(null)
@@ -78,8 +108,8 @@ export const SatelliteMap = forwardRef<SatelliteMapHandle, SatelliteMapProps>(
     const leafletRef = useRef<typeof import("leaflet") | null>(null)
     const plotsGroupRef = useRef<LayerGroup | null>(null)
     const demoMarkerRef = useRef<CircleMarker | null>(null)
-    const plotsRef = useRef(plotsProp)
-    plotsRef.current = plotsProp
+    const navigationPlotsRef = useRef(navigationPlots)
+    navigationPlotsRef.current = navigationPlots
 
     const mapTypeRef = useRef(mapType)
     mapTypeRef.current = mapType
@@ -95,7 +125,7 @@ export const SatelliteMap = forwardRef<SatelliteMapHandle, SatelliteMapProps>(
       fitToPlots: () => {
         const map = mapRef.current
         const L = leafletRef.current
-        const list = plotsRef.current
+        const list = navigationPlotsRef.current
         if (!map || !L || list.length === 0) return
         const bounds = L.latLngBounds([])
         for (const p of list) {
@@ -109,7 +139,7 @@ export const SatelliteMap = forwardRef<SatelliteMapHandle, SatelliteMapProps>(
       flyToLot: (id: string) => {
         const map = mapRef.current
         const L = leafletRef.current
-        const plot = plotsRef.current.find((p) => p.id === id)
+        const plot = navigationPlotsRef.current.find((p) => p.id === id)
         if (!map || !L || !plot || plot.polygon.length === 0) return
         const bounds = L.latLngBounds([])
         extendBoundsFromPolygon(L, bounds, plot.polygon)
@@ -172,7 +202,7 @@ export const SatelliteMap = forwardRef<SatelliteMapHandle, SatelliteMapProps>(
       const L = leafletRef.current
       if (!mapReady || !map || !L) return
 
-      if (plotsProp.length > 0) {
+      if (navigationPlots.length > 0) {
         if (demoMarkerRef.current) {
           map.removeLayer(demoMarkerRef.current)
           demoMarkerRef.current = null
@@ -190,7 +220,7 @@ export const SatelliteMap = forwardRef<SatelliteMapHandle, SatelliteMapProps>(
           .bindPopup("Referencia demo — región pampeana")
         demoMarkerRef.current = m
       }
-    }, [mapReady, plotsProp.length])
+    }, [mapReady, navigationPlots.length])
 
     useEffect(() => {
       const L = leafletRef.current
@@ -207,6 +237,20 @@ export const SatelliteMap = forwardRef<SatelliteMapHandle, SatelliteMapProps>(
         L.polygon(latlngs, PLOT_STYLE)
           .addTo(group)
           .bindPopup(plot.name)
+
+        const [lonC, latC] = polygonCentroidLonLat(plot.polygon)
+        const label = escapeHtml(plot.name)
+        const icon = L.divIcon({
+          className: "satellite-plot-label-icon",
+          html: `<div class="satellite-plot-label-chip">${label}</div>`,
+          iconSize: [1, 1],
+          iconAnchor: [0, 0],
+        })
+        L.marker([latC, lonC], {
+          icon,
+          interactive: false,
+          keyboard: false,
+        }).addTo(group)
       }
     }, [plotsProp, mapReady])
 

@@ -56,9 +56,19 @@ export interface DbPlot {
   ndvi_index: number | null
   crop_disease_status: string | null
   notes: string | null
+  /** ISO yyyy-mm-dd desde columna `date` en Postgres */
+  sowing_date: string | null
   created_at: string
   updated_at: string
   group: number
+  /** jsonb: [[lon, lat], ...] contorno guardado en BD */
+  polygon?: unknown | null
+  /** GeoJSON Polygon (type + coordinates); columna en BD: "geoJSON" */
+  geoJSON?: unknown | null
+}
+
+type DbPlotWithFarm = DbPlot & {
+  farms?: { id: string; name: string } | { id: string; name: string }[] | null
 }
 
 export interface DbFarm {
@@ -85,11 +95,14 @@ export interface DbPlotPreviousYield {
 // Frontend-facing types (mapped from DB rows)
 // ──────────────────────────────────────────────
 
-/** Contorno en GeoJSON [longitud, latitud] cuando exista en backend. */
+/** Contorno [longitud, latitud] desde columna `polygon` o aproximado por centroide. */
 export type LotPolygon = [number, number][]
 
 export interface Lot {
   id: string
+  farmId: string
+  farmName: string
+  plotGroup: number
   name: string
   crop: string
   area: number
@@ -98,6 +111,8 @@ export interface Lot {
   predictedYield: number | null
   lastUpdated: string
   polygon?: LotPolygon
+  /** true si no hay `polygon` en BD y se usó cuadrado por ubicación + superficie (lotes viejos). */
+  polygonApproximated?: boolean
 }
 
 export interface UserProfile {
@@ -144,9 +159,80 @@ export interface SoilMetric {
 // Helpers
 // ──────────────────────────────────────────────
 
-function mapPlotToLot(plot: DbPlot): Lot {
+const METERS_PER_DEG_LAT = 111_320
+
+function metersToLatDelta(m: number): number {
+  return m / METERS_PER_DEG_LAT
+}
+
+function metersToLonDelta(m: number, latDeg: number): number {
+  const cos = Math.cos((latDeg * Math.PI) / 180)
+  const denom = METERS_PER_DEG_LAT * (Math.abs(cos) < 1e-6 ? 1e-6 : cos)
+  return m / denom
+}
+
+/**
+ * Cuadrado alineado N-S / E-O en torno a `latitude`/`longitude`.
+ * Lado ≈ √área si hay `area_ha`; si no, ~90 m de lado (solo referencia visual en mapa).
+ */
+function parsePlotPolygon(raw: unknown): LotPolygon | undefined {
+  if (!Array.isArray(raw) || raw.length < 3) return undefined
+  const out: LotPolygon = []
+  for (const item of raw) {
+    if (!Array.isArray(item) || item.length < 2) return undefined
+    const lon = Number(item[0])
+    const lat = Number(item[1])
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return undefined
+    out.push([lon, lat])
+  }
+  return out
+}
+
+function lotPolygonFromCentroidAndArea(
+  lat: number,
+  lon: number,
+  areaHa: number | null,
+): LotPolygon {
+  const areaM2 =
+    areaHa != null && Number.isFinite(areaHa) && areaHa > 0 ? areaHa * 10_000 : 0
+  const sideM = areaM2 > 0 ? Math.sqrt(areaM2) : 0
+  let halfSideM = sideM > 0 ? sideM / 2 : 45
+  halfSideM = Math.min(400, Math.max(20, halfSideM))
+  const dLat = metersToLatDelta(halfSideM)
+  const dLon = metersToLonDelta(halfSideM, lat)
+  return [
+    [lon - dLon, lat - dLat],
+    [lon + dLon, lat - dLat],
+    [lon + dLon, lat + dLat],
+    [lon - dLon, lat + dLat],
+  ]
+}
+
+function mapPlotToLot(plot: DbPlotWithFarm): Lot {
+  const farmEmbed = plot.farms
+  const farmRow = Array.isArray(farmEmbed) ? farmEmbed[0] : farmEmbed
+  const lat =
+    plot.latitude != null && Number.isFinite(Number(plot.latitude))
+      ? Number(plot.latitude)
+      : null
+  const lon =
+    plot.longitude != null && Number.isFinite(Number(plot.longitude))
+      ? Number(plot.longitude)
+      : null
+  const stored = parsePlotPolygon(plot.polygon)
+  let polygon: LotPolygon | undefined
+  let polygonApproximated = false
+  if (stored && stored.length >= 3) {
+    polygon = stored
+  } else if (lat != null && lon != null) {
+    polygon = lotPolygonFromCentroidAndArea(lat, lon, plot.area_ha)
+    polygonApproximated = true
+  }
   return {
     id: plot.id,
+    farmId: plot.farm_id,
+    farmName: farmRow?.name ?? "",
+    plotGroup: Number.isFinite(plot.group) ? plot.group : 1,
     name: plot.name,
     crop: plot.crop_type ?? "Sin cultivo",
     area: Number(plot.area_ha) || 0,
@@ -154,6 +240,12 @@ function mapPlotToLot(plot: DbPlot): Lot {
     ndvi: Number(plot.ndvi_index) || 0,
     predictedYield: null,
     lastUpdated: plot.updated_at,
+    ...(polygon
+      ? {
+          polygon,
+          ...(polygonApproximated ? { polygonApproximated: true } : {}),
+        }
+      : {}),
   }
 }
 
@@ -271,12 +363,12 @@ export async function fetchLots(): Promise<Lot[]> {
 
   const { data, error } = await supabase
     .from("plots")
-    .select("*")
+    .select("*, farms(name)")
     .in("farm_id", farmIds)
     .order("created_at", { ascending: false })
 
   if (error) throw error
-  return (data ?? []).map(mapPlotToLot)
+  return (data ?? []).map((row) => mapPlotToLot(row as DbPlotWithFarm))
 }
 
 export async function getLotById(id: string): Promise<Lot | null> {
@@ -286,13 +378,12 @@ export async function getLotById(id: string): Promise<Lot | null> {
 
   const { data, error } = await supabase
     .from("plots")
-    .select("*")
+    .select("*, farms(name)")
     .eq("id", id)
     .in("farm_id", farmIds)
     .maybeSingle()
 
   if (error) return null
-  if (!data) return null
   return mapPlotToLot(data)
 }
 
@@ -368,17 +459,45 @@ export interface CreatePlotInput {
   status?: string
   latitude?: number
   longitude?: number
+  /** Vértices [lon, lat]; se guardan en `plots.polygon` (jsonb). */
+  polygon?: LotPolygon
   description?: string
   soil_ph?: number
   irrigation_type?: string
   fertilizer_type?: string
   pesticide_usage_ml?: number
   crop_disease_status?: string
+  /** yyyy-mm-dd (input type=date) */
+  sowing_date?: string
 }
 
 function roundGeographicCoord(value: number, decimals: number): number {
   const f = 10 ** decimals
   return Math.round(value * f) / f
+}
+
+/**
+ * Convierte vértices [lon, lat] (como en el mapa del form) a GeoJSON Polygon RFC 7946.
+ * Cierra el anillo exterior si hace falta; misma precisión que lat/lon del insert.
+ */
+function lotPolygonToGeoJsonPolygon(
+  parsed: LotPolygon,
+): { type: "Polygon"; coordinates: number[][][] } | null {
+  if (parsed.length < 3) return null
+  const ring = parsed.map(([lon, lat]) => [
+    roundGeographicCoord(lon, 6),
+    roundGeographicCoord(lat, 6),
+  ])
+  const first = ring[0]
+  const last = ring[ring.length - 1]
+  const closed =
+    first[0] === last[0] && first[1] === last[1]
+      ? ring
+      : [...ring, [first[0], first[1]]]
+  return {
+    type: "Polygon",
+    coordinates: [closed],
+  }
 }
 
 export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
@@ -401,11 +520,14 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
     area_ha?: number
     latitude?: number
     longitude?: number
+    polygon?: LotPolygon
+    geoJSON?: { type: "Polygon"; coordinates: number[][][] }
     soil_ph?: number
     irrigation_type?: string
     fertilizer_type?: string
     pesticide_usage_ml?: number
     crop_disease_status?: string
+    sowing_date?: string
   } = {
     farm_id: input.farm_id,
     name: input.name,
@@ -428,6 +550,14 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
   if (input.longitude != null && Number.isFinite(input.longitude)) {
     row.longitude = roundGeographicCoord(input.longitude, 6)
   }
+  if (input.polygon && input.polygon.length >= 3) {
+    const parsed = parsePlotPolygon(input.polygon)
+    if (parsed) {
+      row.polygon = parsed
+      const gj = lotPolygonToGeoJsonPolygon(parsed)
+      if (gj) row.geoJSON = gj
+    }
+  }
   if (input.soil_ph != null && Number.isFinite(input.soil_ph)) {
     row.soil_ph = input.soil_ph
   }
@@ -437,6 +567,8 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
     row.pesticide_usage_ml = input.pesticide_usage_ml
   }
   if (input.crop_disease_status) row.crop_disease_status = input.crop_disease_status
+  const sd = input.sowing_date?.trim()
+  if (sd) row.sowing_date = sd
 
   const { data: ownedFarm, error: farmCheckErr } = await supabase
     .from("farms")
@@ -634,6 +766,7 @@ export async function getYieldComparisonByCrop(): Promise<YieldByCrop[]> {
   const farmIds = await getUserFarmIds(supabase)
   if (!farmIds || farmIds.length === 0) return []
 
+  // `plot_prediction` se consulta aparte: el embed desde plots puede fallar si PostgREST no tiene la relación inversa.
   const { data: plots, error } = await supabase
     .from("plots")
     .select(
@@ -641,8 +774,7 @@ export async function getYieldComparisonByCrop(): Promise<YieldByCrop[]> {
     id,
     crop_type,
     area_ha,
-    plot_previous_yields ( position, yield_value, yield_unit ),
-    plot_prediction ( ml_predicted_tn_ha )
+    plot_previous_yields ( position, yield_value, yield_unit )
   `,
     )
     .in("farm_id", farmIds)
@@ -654,13 +786,26 @@ export async function getYieldComparisonByCrop(): Promise<YieldByCrop[]> {
     crop_type: string | null
     area_ha: number | null
     plot_previous_yields: DbPlotPreviousYield[] | null
-    plot_prediction:
-      | { ml_predicted_tn_ha: number | null }
-      | { ml_predicted_tn_ha: number | null }[]
-      | null
   }
 
   const rows = (plots ?? []) as PlotRow[]
+
+  const predByPlotId = new Map<string, { ml_predicted_tn_ha: number | null }>()
+  if (rows.length > 0) {
+    const ids = rows.map((r) => r.id)
+    const { data: preds, error: predErr } = await supabase
+      .from("plot_prediction")
+      .select("plot_id, ml_predicted_tn_ha")
+      .in("plot_id", ids)
+
+    if (!predErr && preds) {
+      for (const row of preds) {
+        predByPlotId.set(row.plot_id, {
+          ml_predicted_tn_ha: row.ml_predicted_tn_ha,
+        })
+      }
+    }
+  }
 
   const byCrop = new Map<
     string,
@@ -677,7 +822,7 @@ export async function getYieldComparisonByCrop(): Promise<YieldByCrop[]> {
     const prevRows = plot.plot_previous_yields ?? []
     const H = weightedHistoricalTnHa(prevRows)
     const actualOne = lastHarvestTnHa(prevRows)
-    const ml = parseMlPredicted(plot.plot_prediction)
+    const ml = parseMlPredicted(predByPlotId.get(plot.id) ?? null)
     const prediction = blendMlAndHistorical(ml, H)
 
     let acc = byCrop.get(crop)
