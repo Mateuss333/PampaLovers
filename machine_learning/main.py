@@ -93,15 +93,6 @@ def csv_to_map(filename):
     df["sowing_month"] = df["sowing_date"].dt.month
     df["harvest_month"] = df["harvest_date"].dt.month
 
-    # Cyclical encoding (better than raw month)
-    df["sowing_month_sin"] = np.sin(2 * np.pi * df["sowing_month"] / 12)
-    df["sowing_month_cos"] = np.cos(2 * np.pi * df["sowing_month"] / 12)
-
-    # Growing duration (strong signal)
-    df["growing_days_calc"] = (
-        df["harvest_date"] - df["sowing_date"]
-    ).dt.days
-
     # Drop raw date columns
     df = df.drop(columns=["sowing_date", "harvest_date"])
 
@@ -118,45 +109,69 @@ def csv_to_map(filename):
 
 # --- Prepare tensors ---
 crops_yield_train = csv_to_map("data/train.csv")
-crops_yield_test = csv_to_map("data/train.csv")
+crops_yield_test = csv_to_map("data/test.csv")  # Note: probably should be test.csv?
 
-# Setup labels that will be predicted
+# Setup labels
 crops_yield_features = crops_yield_train.copy()
 crops_yield_labels = crops_yield_features.pop("yield_kg_per_hectare")
 
 crops_yield_features_test = crops_yield_test.copy()
 crops_yield_labels_test = crops_yield_features_test.pop("yield_kg_per_hectare")
 
-# Normalize labels
-mean = crops_yield_labels.mean()
-std = crops_yield_labels.std()
-
-crops_yield_labels = (crops_yield_labels - mean) / std
-crops_yield_labels_test = (crops_yield_labels_test - mean) / std
-
-# Pack the features into a single NumPy array
+# --- Convert to NumPy arrays ---
 crops_yield_features = np.array(crops_yield_features)
+crops_yield_labels = np.array(crops_yield_labels)
 crops_yield_features_test = np.array(crops_yield_features_test)
+crops_yield_labels_test = np.array(crops_yield_labels_test)
+
+# --- Standardize features ---
+feature_mean = crops_yield_features.mean(axis=0)
+feature_std = crops_yield_features.std(axis=0)
+
+crops_yield_features_scaled = (crops_yield_features - feature_mean) / feature_std
+crops_yield_features_test_scaled = (crops_yield_features_test - feature_mean) / feature_std
+
+# --- Standardize labels ---
+label_mean = crops_yield_labels.mean()
+label_std = crops_yield_labels.std()
+
+crops_yield_labels_scaled = (crops_yield_labels - label_mean) / label_std
+crops_yield_labels_test_scaled = (crops_yield_labels_test - label_mean) / label_std
+
+# --- Save mean/std for later inference ---
+np.save("models/feature_mean.npy", feature_mean)
+np.save("models/feature_std.npy", feature_std)
+np.save("models/label_mean.npy", label_mean)
+np.save("models/label_std.npy", label_std)
 
 # --- Setup model ---
+num_features = crops_yield_features.shape[1]
 
-# Normalization
-normalize = layers.Normalization()
-normalize.adapt(crops_yield_features)
-
-# Apply the normalization layer to the model
-norm_crops_yield_model = tf.keras.Sequential([
-  normalize,
-  layers.Dense(128, activation='relu'),
-  layers.Dense(64, activation='relu'),
-  layers.Dense(1)
+crops_yield_model = tf.keras.Sequential([
+    layers.Dense(128, activation='relu', input_shape=(num_features,)),
+    layers.Dense(64, activation='relu'),
+    layers.Dense(1)
 ])
 
-norm_crops_yield_model.compile(loss = tf.keras.losses.MeanSquaredError(),
-                           optimizer = tf.keras.optimizers.Adam())
+# Compile
+crops_yield_model.compile(
+    loss=tf.keras.losses.MeanSquaredError(),
+    optimizer=tf.keras.optimizers.Adam()
+)
 
 # Train the model
-norm_crops_yield_model.fit(crops_yield_features, crops_yield_labels, epochs=50)
+crops_yield_model.fit(
+    crops_yield_features_scaled,
+    crops_yield_labels_scaled,
+    epochs=10,
+    verbose=2
+)
 
-# Test the model
-norm_crops_yield_model.evaluate(crops_yield_features_test, crops_yield_labels_test, verbose=2)
+# Evaluate
+crops_yield_model.evaluate(crops_yield_features_test_scaled, crops_yield_labels_test_scaled, verbose=2)
+
+# Show architecture
+crops_yield_model.summary()
+
+# Save the model
+crops_yield_model.save('models/argon.keras')
