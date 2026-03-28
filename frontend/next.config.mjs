@@ -5,6 +5,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  outputFileTracingRoot: path.join(__dirname, "../"),
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -12,7 +13,7 @@ const nextConfig = {
     unoptimized: true,
   },
   turbopack: {
-    root: __dirname,
+    root: path.join(__dirname, "../"),
   },
 };
 
