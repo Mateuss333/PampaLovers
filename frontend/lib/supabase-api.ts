@@ -484,6 +484,16 @@ export interface CreatePlotInput {
   sowing_date?: string
 }
 
+export interface CreatePlotWithEnrichmentResult {
+  plot: DbPlot
+  enrichment: {
+    dateFrom: string | null
+    dateTo: string | null
+    appliedFields: string[]
+    warnings: string[]
+  }
+}
+
 function roundGeographicCoord(value: number, decimals: number): number {
   const f = 10 ** decimals
   return Math.round(value * f) / f
@@ -604,6 +614,52 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
 
   if (error) throw error
   return data
+}
+
+export async function createPlotWithEnrichment(
+  input: CreatePlotInput,
+): Promise<CreatePlotWithEnrichmentResult> {
+  const response = await fetch("/api/plots/enriched", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  })
+
+  const raw = await response.text()
+  const parsed = tryParseJson(raw)
+
+  if (!response.ok) {
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "error" in parsed &&
+      typeof parsed.error === "string"
+    ) {
+      throw new Error(parsed.error)
+    }
+    throw new Error("No se pudo crear el lote")
+  }
+
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    !("plot" in parsed) ||
+    !("enrichment" in parsed)
+  ) {
+    throw new Error("La respuesta del servidor fue invalida")
+  }
+
+  return parsed as CreatePlotWithEnrichmentResult
+}
+
+function tryParseJson(value: string): unknown {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
 }
 
 export async function deletePlot(id: string): Promise<void> {

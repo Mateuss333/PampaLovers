@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Plus, MapPin, Calendar, Wheat, Loader2, FlaskConical } from "lucide-react"
-import { createPlot } from "@/lib/supabase-api"
+import { createPlotWithEnrichment } from "@/lib/supabase-api"
 import { polygonAreaHectares } from "@/lib/polygon-area"
 import {
   LotPolygonMapPicker,
@@ -178,7 +179,7 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
       const parsedPh = parseFloat(formData.soilPh)
       const parsedPesticide = parseFloat(formData.pesticideUsageMl)
 
-      await createPlot({
+      const result = await createPlotWithEnrichment({
         farm_id: farmId,
         name: formData.name,
         group: parsedGroup,
@@ -196,6 +197,13 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
         pesticide_usage_ml: Number.isFinite(parsedPesticide) && parsedPesticide >= 0 ? parsedPesticide : undefined,
         crop_disease_status: formData.cropDiseaseStatus || undefined,
       })
+
+      toast.success("Lote creado")
+      if (result.enrichment.warnings.length > 0) {
+        toast.info(
+          `El lote se guardo, pero faltaron metricas automaticas. ${result.enrichment.warnings.join(" ")}`,
+        )
+      }
 
       onSuccess?.()
       handleOpenChange(false)
@@ -567,7 +575,7 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
               {submitting && (
                 <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
               )}
-              Crear Lote
+              {submitting ? "Consultando APIs..." : "Crear Lote"}
             </Button>
           </DialogFooter>
         </form>
