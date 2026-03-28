@@ -59,6 +59,12 @@ export interface DbPlot {
   created_at: string
   updated_at: string
   group: number
+  /** jsonb: [[lon, lat], ...] contorno guardado en BD */
+  polygon?: unknown | null
+}
+
+type DbPlotWithFarm = DbPlot & {
+  farms?: { id: string; name: string } | { id: string; name: string }[] | null
 }
 
 export interface DbFarm {
@@ -85,11 +91,14 @@ export interface DbPlotPreviousYield {
 // Frontend-facing types (mapped from DB rows)
 // ──────────────────────────────────────────────
 
-/** Contorno en GeoJSON [longitud, latitud] cuando exista en backend. */
+/** Contorno [longitud, latitud] desde columna `polygon` o aproximado por centroide. */
 export type LotPolygon = [number, number][]
 
 export interface Lot {
   id: string
+  farmId: string
+  farmName: string
+  plotGroup: number
   name: string
   crop: string
   area: number
@@ -98,6 +107,8 @@ export interface Lot {
   predictedYield: number | null
   lastUpdated: string
   polygon?: LotPolygon
+  /** true si no hay `polygon` en BD y se usó cuadrado por ubicación + superficie (lotes viejos). */
+  polygonApproximated?: boolean
 }
 
 export interface UserProfile {
@@ -144,9 +155,80 @@ export interface SoilMetric {
 // Helpers
 // ──────────────────────────────────────────────
 
-function mapPlotToLot(plot: DbPlot): Lot {
+const METERS_PER_DEG_LAT = 111_320
+
+function metersToLatDelta(m: number): number {
+  return m / METERS_PER_DEG_LAT
+}
+
+function metersToLonDelta(m: number, latDeg: number): number {
+  const cos = Math.cos((latDeg * Math.PI) / 180)
+  const denom = METERS_PER_DEG_LAT * (Math.abs(cos) < 1e-6 ? 1e-6 : cos)
+  return m / denom
+}
+
+/**
+ * Cuadrado alineado N-S / E-O en torno a `latitude`/`longitude`.
+ * Lado ≈ √área si hay `area_ha`; si no, ~90 m de lado (solo referencia visual en mapa).
+ */
+function parsePlotPolygon(raw: unknown): LotPolygon | undefined {
+  if (!Array.isArray(raw) || raw.length < 3) return undefined
+  const out: LotPolygon = []
+  for (const item of raw) {
+    if (!Array.isArray(item) || item.length < 2) return undefined
+    const lon = Number(item[0])
+    const lat = Number(item[1])
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return undefined
+    out.push([lon, lat])
+  }
+  return out
+}
+
+function lotPolygonFromCentroidAndArea(
+  lat: number,
+  lon: number,
+  areaHa: number | null,
+): LotPolygon {
+  const areaM2 =
+    areaHa != null && Number.isFinite(areaHa) && areaHa > 0 ? areaHa * 10_000 : 0
+  const sideM = areaM2 > 0 ? Math.sqrt(areaM2) : 0
+  let halfSideM = sideM > 0 ? sideM / 2 : 45
+  halfSideM = Math.min(400, Math.max(20, halfSideM))
+  const dLat = metersToLatDelta(halfSideM)
+  const dLon = metersToLonDelta(halfSideM, lat)
+  return [
+    [lon - dLon, lat - dLat],
+    [lon + dLon, lat - dLat],
+    [lon + dLon, lat + dLat],
+    [lon - dLon, lat + dLat],
+  ]
+}
+
+function mapPlotToLot(plot: DbPlotWithFarm): Lot {
+  const farmEmbed = plot.farms
+  const farmRow = Array.isArray(farmEmbed) ? farmEmbed[0] : farmEmbed
+  const lat =
+    plot.latitude != null && Number.isFinite(Number(plot.latitude))
+      ? Number(plot.latitude)
+      : null
+  const lon =
+    plot.longitude != null && Number.isFinite(Number(plot.longitude))
+      ? Number(plot.longitude)
+      : null
+  const stored = parsePlotPolygon(plot.polygon)
+  let polygon: LotPolygon | undefined
+  let polygonApproximated = false
+  if (stored && stored.length >= 3) {
+    polygon = stored
+  } else if (lat != null && lon != null) {
+    polygon = lotPolygonFromCentroidAndArea(lat, lon, plot.area_ha)
+    polygonApproximated = true
+  }
   return {
     id: plot.id,
+    farmId: plot.farm_id,
+    farmName: farmRow?.name ?? "",
+    plotGroup: Number.isFinite(plot.group) ? plot.group : 1,
     name: plot.name,
     crop: plot.crop_type ?? "Sin cultivo",
     area: Number(plot.area_ha) || 0,
@@ -154,6 +236,12 @@ function mapPlotToLot(plot: DbPlot): Lot {
     ndvi: Number(plot.ndvi_index) || 0,
     predictedYield: null,
     lastUpdated: plot.updated_at,
+    ...(polygon
+      ? {
+          polygon,
+          ...(polygonApproximated ? { polygonApproximated: true } : {}),
+        }
+      : {}),
   }
 }
 
@@ -249,23 +337,23 @@ export async function fetchLots(): Promise<Lot[]> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from("plots")
-    .select("*")
+    .select("*, farms(name)")
     .order("created_at", { ascending: false })
 
   if (error) throw error
-  return (data ?? []).map(mapPlotToLot)
+  return (data ?? []).map((row) => mapPlotToLot(row as DbPlotWithFarm))
 }
 
 export async function getLotById(id: string): Promise<Lot | null> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from("plots")
-    .select("*")
+    .select("*, farms(name)")
     .eq("id", id)
     .single()
 
   if (error) return null
-  return mapPlotToLot(data)
+  return mapPlotToLot(data as DbPlotWithFarm)
 }
 
 export interface CreatePlotInput {
@@ -277,6 +365,8 @@ export interface CreatePlotInput {
   status?: string
   latitude?: number
   longitude?: number
+  /** Vértices [lon, lat]; se guardan en `plots.polygon` (jsonb). */
+  polygon?: LotPolygon
   description?: string
   soil_ph?: number
   irrigation_type?: string
@@ -310,6 +400,7 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
     area_ha?: number
     latitude?: number
     longitude?: number
+    polygon?: LotPolygon
     soil_ph?: number
     irrigation_type?: string
     fertilizer_type?: string
@@ -336,6 +427,10 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
   }
   if (input.longitude != null && Number.isFinite(input.longitude)) {
     row.longitude = roundGeographicCoord(input.longitude, 6)
+  }
+  if (input.polygon && input.polygon.length >= 3) {
+    const parsed = parsePlotPolygon(input.polygon)
+    if (parsed) row.polygon = parsed
   }
   if (input.soil_ph != null && Number.isFinite(input.soil_ph)) {
     row.soil_ph = input.soil_ph
@@ -520,12 +615,13 @@ export async function updateFarm(
 
 export async function getYieldComparisonByCrop(): Promise<YieldByCrop[]> {
   const supabase = createClient()
+  // `plot_prediction` referencia `plots` por plot_id; el embed desde plots falla si PostgREST
+  // no tiene la relación inversa en caché. Consulta aparte evita ese error.
   const { data: plots, error } = await supabase.from("plots").select(`
     id,
     crop_type,
     area_ha,
-    plot_previous_yields ( position, yield_value, yield_unit ),
-    plot_prediction ( ml_predicted_tn_ha )
+    plot_previous_yields ( position, yield_value, yield_unit )
   `)
 
   if (error) throw new Error(error.message)
@@ -535,13 +631,26 @@ export async function getYieldComparisonByCrop(): Promise<YieldByCrop[]> {
     crop_type: string | null
     area_ha: number | null
     plot_previous_yields: DbPlotPreviousYield[] | null
-    plot_prediction:
-      | { ml_predicted_tn_ha: number | null }
-      | { ml_predicted_tn_ha: number | null }[]
-      | null
   }
 
   const rows = (plots ?? []) as PlotRow[]
+
+  const predByPlotId = new Map<string, { ml_predicted_tn_ha: number | null }>()
+  if (rows.length > 0) {
+    const ids = rows.map((r) => r.id)
+    const { data: preds, error: predErr } = await supabase
+      .from("plot_prediction")
+      .select("plot_id, ml_predicted_tn_ha")
+      .in("plot_id", ids)
+
+    if (!predErr && preds) {
+      for (const row of preds) {
+        predByPlotId.set(row.plot_id, {
+          ml_predicted_tn_ha: row.ml_predicted_tn_ha,
+        })
+      }
+    }
+  }
 
   const byCrop = new Map<
     string,
@@ -558,7 +667,7 @@ export async function getYieldComparisonByCrop(): Promise<YieldByCrop[]> {
     const prevRows = plot.plot_previous_yields ?? []
     const H = weightedHistoricalTnHa(prevRows)
     const actualOne = lastHarvestTnHa(prevRows)
-    const ml = parseMlPredicted(plot.plot_prediction)
+    const ml = parseMlPredicted(predByPlotId.get(plot.id) ?? null)
     const prediction = blendMlAndHistorical(ml, H)
 
     let acc = byCrop.get(crop)

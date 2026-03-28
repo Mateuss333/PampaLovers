@@ -191,6 +191,7 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
         status: "Sembrado",
         latitude: latSum / n,
         longitude: lonSum / n,
+        polygon: pts,
         soil_ph: Number.isFinite(parsedPh) && parsedPh > 0 ? parsedPh : undefined,
         irrigation_type: formData.irrigationType || undefined,
         fertilizer_type: formData.fertilizerType || undefined,
