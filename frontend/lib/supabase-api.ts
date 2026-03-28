@@ -58,6 +58,7 @@ export interface DbPlot {
   notes: string | null
   created_at: string
   updated_at: string
+  group: number
 }
 
 export interface DbFarm {
@@ -270,12 +271,18 @@ export async function getLotById(id: string): Promise<Lot | null> {
 export interface CreatePlotInput {
   farm_id: string
   name: string
+  group: number
   crop_type?: string
   area_ha?: number
   status?: string
   latitude?: number
   longitude?: number
   description?: string
+  soil_ph?: number
+  irrigation_type?: string
+  fertilizer_type?: string
+  pesticide_usage_ml?: number
+  crop_disease_status?: string
 }
 
 function roundGeographicCoord(value: number, decimals: number): number {
@@ -296,15 +303,22 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
   const row: {
     farm_id: string
     name: string
+    group: number
     status: string
     crop_type?: string
     description?: string | null
     area_ha?: number
     latitude?: number
     longitude?: number
+    soil_ph?: number
+    irrigation_type?: string
+    fertilizer_type?: string
+    pesticide_usage_ml?: number
+    crop_disease_status?: string
   } = {
     farm_id: input.farm_id,
     name: input.name,
+    group: input.group,
     status: input.status ?? "Sembrado",
   }
 
@@ -323,6 +337,15 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
   if (input.longitude != null && Number.isFinite(input.longitude)) {
     row.longitude = roundGeographicCoord(input.longitude, 6)
   }
+  if (input.soil_ph != null && Number.isFinite(input.soil_ph)) {
+    row.soil_ph = input.soil_ph
+  }
+  if (input.irrigation_type) row.irrigation_type = input.irrigation_type
+  if (input.fertilizer_type) row.fertilizer_type = input.fertilizer_type
+  if (input.pesticide_usage_ml != null && Number.isFinite(input.pesticide_usage_ml)) {
+    row.pesticide_usage_ml = input.pesticide_usage_ml
+  }
+  if (input.crop_disease_status) row.crop_disease_status = input.crop_disease_status
 
   const { data, error } = await supabase
     .from("plots")

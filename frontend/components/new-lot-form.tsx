@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Plus, MapPin, Calendar, Wheat, Loader2 } from "lucide-react"
+import { Plus, MapPin, Calendar, Wheat, Loader2, FlaskConical } from "lucide-react"
 import { createPlot } from "@/lib/supabase-api"
 import { polygonAreaHectares } from "@/lib/polygon-area"
 import {
@@ -47,6 +47,13 @@ export interface NewLotFormData {
   sowingDate: string
   areaHa: string
   polygonPoints: LngLatTuple[]
+  soilPh: string
+  irrigationType: string
+  fertilizerType: string
+  pesticideUsageMl: string
+  sowingMonth: string
+  harvestMonth: string
+  cropDiseaseStatus: string
 }
 
 const cropTypes = [
@@ -63,6 +70,14 @@ const cropTypes = [
 const currentYear = new Date().getFullYear()
 const years = Array.from({ length: 10 }, (_, i) => (currentYear - 5 + i).toString())
 
+const irrigationTypes = ["Drip", "Sprinkle", "Manual", "None"] as const
+const fertilizerTypes = ["Organic", "Inorganic", "Mixed"] as const
+const cropDiseaseOptions = ["None", "Mild", "Moderate", "Severe"] as const
+const months = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+] as const
+
 function emptyForm(): NewLotFormData {
   return {
     name: "",
@@ -72,6 +87,13 @@ function emptyForm(): NewLotFormData {
     sowingDate: "",
     areaHa: "",
     polygonPoints: [],
+    soilPh: "",
+    irrigationType: "",
+    fertilizerType: "",
+    pesticideUsageMl: "",
+    sowingMonth: "",
+    harvestMonth: "",
+    cropDiseaseStatus: "",
   }
 }
 
@@ -131,13 +153,21 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
     setError(null)
 
     try {
+      const parsedGroup = parseInt(formData.group, 10)
+      if (!Number.isFinite(parsedGroup) || parsedGroup < 1) {
+        setError("El grupo debe ser un número válido.")
+        setSubmitting(false)
+        return
+      }
+
       const latSum = pts.reduce((s, [, lat]) => s + lat, 0)
       const lonSum = pts.reduce((s, [lon]) => s + lon, 0)
       const n = pts.length
       const descriptionParts = [
-        formData.group.trim(),
         formData.year && `Campaña ${formData.year}`,
         formData.sowingDate && `Siembra ${formData.sowingDate}`,
+        formData.sowingMonth && `Siembra: ${formData.sowingMonth}`,
+        formData.harvestMonth && `Cosecha: ${formData.harvestMonth}`,
       ].filter(Boolean)
 
       const parsedArea = parseFloat(formData.areaHa)
@@ -148,15 +178,24 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
           ? parsedArea
           : undefined
 
+      const parsedPh = parseFloat(formData.soilPh)
+      const parsedPesticide = parseFloat(formData.pesticideUsageMl)
+
       await createPlot({
         farm_id: farmId,
         name: formData.name,
+        group: parsedGroup,
         crop_type: formData.cropType || undefined,
         description: descriptionParts.length ? descriptionParts.join(" · ") : undefined,
         area_ha: areaHa,
         status: "Sembrado",
         latitude: latSum / n,
         longitude: lonSum / n,
+        soil_ph: Number.isFinite(parsedPh) && parsedPh > 0 ? parsedPh : undefined,
+        irrigation_type: formData.irrigationType || undefined,
+        fertilizer_type: formData.fertilizerType || undefined,
+        pesticide_usage_ml: Number.isFinite(parsedPesticide) && parsedPesticide >= 0 ? parsedPesticide : undefined,
+        crop_disease_status: formData.cropDiseaseStatus || undefined,
       })
 
       onSuccess?.()
@@ -213,16 +252,20 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
 
               <div className="space-y-2">
                 <Label htmlFor="group" className="text-foreground">
-                  Grupo
+                  Grupo <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   id="group"
-                  placeholder="ej: Zona Norte"
+                  type="number"
+                  step="1"
+                  min="1"
+                  placeholder="ej: 1"
                   value={formData.group}
                   onChange={(e) =>
                     setFormData({ ...formData, group: e.target.value })
                   }
-                  className="bg-background"
+                  className="bg-background font-mono"
+                  required
                   disabled={submitting}
                 />
               </div>
@@ -324,6 +367,178 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
                   className="bg-background font-mono"
                   disabled={submitting}
                 />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+              <FlaskConical className="h-4 w-4 text-muted-foreground" />
+              Datos Agronómicos
+            </h3>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="soilPh" className="text-foreground">
+                  pH del Suelo
+                </Label>
+                <Input
+                  id="soilPh"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="14"
+                  placeholder="ej: 6.5"
+                  value={formData.soilPh}
+                  onChange={(e) =>
+                    setFormData({ ...formData, soilPh: e.target.value })
+                  }
+                  className="bg-background font-mono"
+                  disabled={submitting}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="irrigationType" className="text-foreground">
+                  Tipo de Riego
+                </Label>
+                <Select
+                  value={formData.irrigationType}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, irrigationType: value })
+                  }
+                  disabled={submitting}
+                >
+                  <SelectTrigger id="irrigationType" className="bg-background">
+                    <SelectValue placeholder="Seleccionar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {irrigationTypes.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="fertilizerType" className="text-foreground">
+                  Tipo de Fertilizante
+                </Label>
+                <Select
+                  value={formData.fertilizerType}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, fertilizerType: value })
+                  }
+                  disabled={submitting}
+                >
+                  <SelectTrigger id="fertilizerType" className="bg-background">
+                    <SelectValue placeholder="Seleccionar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {fertilizerTypes.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="pesticideUsageMl" className="text-foreground">
+                  Uso de Pesticida (ml/día)
+                </Label>
+                <Input
+                  id="pesticideUsageMl"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  placeholder="ej: 50"
+                  value={formData.pesticideUsageMl}
+                  onChange={(e) =>
+                    setFormData({ ...formData, pesticideUsageMl: e.target.value })
+                  }
+                  className="bg-background font-mono"
+                  disabled={submitting}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cropDiseaseStatus" className="text-foreground">
+                  Estado Sanitario
+                </Label>
+                <Select
+                  value={formData.cropDiseaseStatus}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, cropDiseaseStatus: value })
+                  }
+                  disabled={submitting}
+                >
+                  <SelectTrigger id="cropDiseaseStatus" className="bg-background">
+                    <SelectValue placeholder="Seleccionar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cropDiseaseOptions.map((opt) => (
+                      <SelectItem key={opt} value={opt}>
+                        {opt}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="sowingMonth" className="text-foreground">
+                  Mes de Siembra
+                </Label>
+                <Select
+                  value={formData.sowingMonth}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, sowingMonth: value })
+                  }
+                  disabled={submitting}
+                >
+                  <SelectTrigger id="sowingMonth" className="bg-background">
+                    <SelectValue placeholder="Seleccionar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {months.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="harvestMonth" className="text-foreground">
+                  Mes de Cosecha
+                </Label>
+                <Select
+                  value={formData.harvestMonth}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, harvestMonth: value })
+                  }
+                  disabled={submitting}
+                >
+                  <SelectTrigger id="harvestMonth" className="bg-background">
+                    <SelectValue placeholder="Seleccionar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {months.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
