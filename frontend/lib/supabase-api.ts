@@ -245,11 +245,34 @@ function sortCropLabels(crops: string[]): string[] {
 // LOTS
 // ──────────────────────────────────────────────
 
+/** IDs de granjas del usuario autenticado (RLS en farms ya filtra; esto asegura el alcance en el cliente). */
+async function getUserFarmIds(
+  supabase: SupabaseClient,
+): Promise<string[] | null> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+  if (authError || !user) return null
+
+  const { data, error } = await supabase
+    .from("farms")
+    .select("id")
+    .eq("user_id", user.id)
+
+  if (error) throw error
+  return (data ?? []).map((row: { id: string }) => row.id)
+}
+
 export async function fetchLots(): Promise<Lot[]> {
   const supabase = createClient()
+  const farmIds = await getUserFarmIds(supabase)
+  if (!farmIds || farmIds.length === 0) return []
+
   const { data, error } = await supabase
     .from("plots")
     .select("*")
+    .in("farm_id", farmIds)
     .order("created_at", { ascending: false })
 
   if (error) throw error
@@ -258,14 +281,82 @@ export async function fetchLots(): Promise<Lot[]> {
 
 export async function getLotById(id: string): Promise<Lot | null> {
   const supabase = createClient()
+  const farmIds = await getUserFarmIds(supabase)
+  if (!farmIds || farmIds.length === 0) return null
+
   const { data, error } = await supabase
     .from("plots")
     .select("*")
     .eq("id", id)
-    .single()
+    .in("farm_id", farmIds)
+    .maybeSingle()
 
   if (error) return null
+  if (!data) return null
   return mapPlotToLot(data)
+}
+
+/** Fila completa de `plots` solo si el lote pertenece a una granja del usuario. */
+export async function getPlotRow(id: string): Promise<DbPlot | null> {
+  const supabase = createClient()
+  const farmIds = await getUserFarmIds(supabase)
+  if (!farmIds || farmIds.length === 0) return null
+
+  const { data, error } = await supabase
+    .from("plots")
+    .select("*")
+    .eq("id", id)
+    .in("farm_id", farmIds)
+    .maybeSingle()
+
+  if (error || !data) return null
+  return data as DbPlot
+}
+
+export interface UpdatePlotInput {
+  name?: string
+  crop_type?: string | null
+  area_ha?: number | null
+  status?: DbPlot["status"]
+  description?: string | null
+  notes?: string | null
+  group?: number
+}
+
+export async function updatePlot(
+  id: string,
+  updates: UpdatePlotInput,
+): Promise<DbPlot> {
+  const supabase = createClient()
+  const farmIds = await getUserFarmIds(supabase)
+  if (!farmIds || farmIds.length === 0) throw new Error("No autenticado")
+
+  const patch: Record<string, unknown> = {}
+  if (updates.name !== undefined) patch.name = updates.name
+  if (updates.crop_type !== undefined) patch.crop_type = updates.crop_type
+  if (updates.area_ha !== undefined) patch.area_ha = updates.area_ha
+  if (updates.status !== undefined) patch.status = updates.status
+  if (updates.description !== undefined) patch.description = updates.description
+  if (updates.notes !== undefined) patch.notes = updates.notes
+  if (updates.group !== undefined) patch.group = updates.group
+
+  if (Object.keys(patch).length === 0) {
+    const row = await getPlotRow(id)
+    if (!row) throw new Error("Lote no encontrado")
+    return row
+  }
+
+  const { data, error } = await supabase
+    .from("plots")
+    .update(patch)
+    .eq("id", id)
+    .in("farm_id", farmIds)
+    .select()
+    .single()
+
+  if (error) throw error
+  if (!data) throw new Error("Lote no encontrado")
+  return data as DbPlot
 }
 
 export interface CreatePlotInput {
@@ -347,6 +438,18 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
   }
   if (input.crop_disease_status) row.crop_disease_status = input.crop_disease_status
 
+  const { data: ownedFarm, error: farmCheckErr } = await supabase
+    .from("farms")
+    .select("id")
+    .eq("id", input.farm_id)
+    .eq("user_id", user.id)
+    .maybeSingle()
+
+  if (farmCheckErr) throw new Error(farmCheckErr.message)
+  if (!ownedFarm) {
+    throw new Error("La granja no existe o no pertenece a tu cuenta")
+  }
+
   const { data, error } = await supabase
     .from("plots")
     .insert(row)
@@ -359,7 +462,15 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
 
 export async function deletePlot(id: string): Promise<void> {
   const supabase = createClient()
-  const { error } = await supabase.from("plots").delete().eq("id", id)
+  const farmIds = await getUserFarmIds(supabase)
+  if (!farmIds || farmIds.length === 0) throw new Error("No autenticado")
+
+  const { error } = await supabase
+    .from("plots")
+    .delete()
+    .eq("id", id)
+    .in("farm_id", farmIds)
+
   if (error) throw error
 }
 
@@ -520,13 +631,21 @@ export async function updateFarm(
 
 export async function getYieldComparisonByCrop(): Promise<YieldByCrop[]> {
   const supabase = createClient()
-  const { data: plots, error } = await supabase.from("plots").select(`
+  const farmIds = await getUserFarmIds(supabase)
+  if (!farmIds || farmIds.length === 0) return []
+
+  const { data: plots, error } = await supabase
+    .from("plots")
+    .select(
+      `
     id,
     crop_type,
     area_ha,
     plot_previous_yields ( position, yield_value, yield_unit ),
     plot_prediction ( ml_predicted_tn_ha )
-  `)
+  `,
+    )
+    .in("farm_id", farmIds)
 
   if (error) throw new Error(error.message)
 
@@ -593,15 +712,19 @@ export async function getYieldComparisonByCrop(): Promise<YieldByCrop[]> {
 
 export async function getDashboardMetrics(): Promise<DashboardMetric[]> {
   const supabase = createClient()
-  const { data: plots, error } = await supabase
-    .from("plots")
-    .select("area_ha, ndvi_index")
-
+  const farmIds = await getUserFarmIds(supabase)
   const empty: DashboardMetric[] = [
     { id: "area", title: "Área Total", value: "0", unit: "hectáreas", change: "—", changeType: "neutral" },
     { id: "lots", title: "Lotes Activos", value: "0", unit: "lotes", change: "—", changeType: "neutral" },
     { id: "yield", title: "NDVI Promedio", value: "0.00", unit: "", change: "—", changeType: "neutral" },
   ]
+
+  if (!farmIds || farmIds.length === 0) return empty
+
+  const { data: plots, error } = await supabase
+    .from("plots")
+    .select("area_ha, ndvi_index")
+    .in("farm_id", farmIds)
 
   if (error || !plots || plots.length === 0) return empty
 
@@ -644,13 +767,17 @@ export async function getDashboardMetrics(): Promise<DashboardMetric[]> {
 
 export async function getSoilMetrics(plotId: string): Promise<SoilMetric[]> {
   const supabase = createClient()
+  const farmIds = await getUserFarmIds(supabase)
+  if (!farmIds || farmIds.length === 0) return []
+
   const { data, error } = await supabase
     .from("plots")
     .select(
       "soil_ph, soil_moisture_percent, temperature_c, rainfall_mm, humidity_percent, ndvi_index",
     )
     .eq("id", plotId)
-    .single()
+    .in("farm_id", farmIds)
+    .maybeSingle()
 
   if (error || !data) return []
 

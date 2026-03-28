@@ -54,22 +54,6 @@ export function AppSidebar() {
           )
         })}
       </nav>
-
-      {/* ML Status Footer */}
-      <div className="border-t border-sidebar-border p-4">
-        <div className="rounded-md bg-sidebar-accent/60 p-3">
-          <p className="text-xs font-medium uppercase tracking-wider text-sidebar-foreground/60">
-            ML Model Status
-          </p>
-          <div className="mt-2 flex items-center gap-2">
-            <div className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sidebar-primary opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-sidebar-primary" />
-            </div>
-            <span className="text-sm font-medium text-sidebar-primary">Activo</span>
-          </div>
-        </div>
-      </div>
     </aside>
   )
 }
