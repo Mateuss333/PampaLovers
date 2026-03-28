@@ -7,7 +7,7 @@ const _inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
 const _jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains" })
 
 export const metadata: Metadata = {
-  title: 'AgroSmart - Plataforma de Gestión Agrícola Inteligente',
+  title: 'EvoAgro - Plataforma de Gestión Agrícola Inteligente',
   description: 'Predicción de rendimientos con ML e imágenes satelitales para optimizar tu producción agrícola',
   generator: 'v0.app',
   icons: {
