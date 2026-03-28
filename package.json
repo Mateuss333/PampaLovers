@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "test:sync-plot-eos-data": "node scripts/test-sync-plot-eos-data.mjs"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.100.1",
     "cors": "^2.8.6",
