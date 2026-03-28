@@ -190,11 +190,55 @@ export interface CreatePlotInput {
   description?: string
 }
 
+function roundGeographicCoord(value: number, decimals: number): number {
+  const f = 10 ** decimals
+  return Math.round(value * f) / f
+}
+
 export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
   const supabase = createClient()
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+  if (authError || !user) throw new Error("No autenticado")
+
+  await ensureUserProfile(supabase, user)
+
+  const row: {
+    farm_id: string
+    name: string
+    status: string
+    crop_type?: string
+    description?: string | null
+    area_ha?: number
+    latitude?: number
+    longitude?: number
+  } = {
+    farm_id: input.farm_id,
+    name: input.name,
+    status: input.status ?? "Sembrado",
+  }
+
+  if (input.crop_type) row.crop_type = input.crop_type
+  if (input.description) row.description = input.description
+  if (
+    input.area_ha != null &&
+    Number.isFinite(input.area_ha) &&
+    input.area_ha > 0
+  ) {
+    row.area_ha = input.area_ha
+  }
+  if (input.latitude != null && Number.isFinite(input.latitude)) {
+    row.latitude = roundGeographicCoord(input.latitude, 6)
+  }
+  if (input.longitude != null && Number.isFinite(input.longitude)) {
+    row.longitude = roundGeographicCoord(input.longitude, 6)
+  }
+
   const { data, error } = await supabase
     .from("plots")
-    .insert(input)
+    .insert(row)
     .select()
     .single()
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -22,10 +22,22 @@ import {
 } from "@/components/ui/select"
 import { Plus, MapPin, Calendar, Wheat, Loader2 } from "lucide-react"
 import { createPlot } from "@/lib/supabase-api"
+import { polygonAreaHectares } from "@/lib/polygon-area"
 import {
   LotPolygonMapPicker,
   type LngLatTuple,
 } from "@/components/lot-polygon-map-picker"
+
+function formatSubmitError(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message
+  if (typeof err === "object" && err !== null && "message" in err) {
+    const o = err as { message?: string; details?: string }
+    if (o.message) {
+      return o.details ? `${o.message} (${o.details})` : o.message
+    }
+  }
+  return "Error al crear el lote"
+}
 
 export interface NewLotFormData {
   name: string
@@ -74,6 +86,21 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
   const [error, setError] = useState<string | null>(null)
   const [formData, setFormData] = useState<NewLotFormData>(emptyForm)
 
+  useEffect(() => {
+    setFormData((prev) => {
+      const pts = prev.polygonPoints
+      if (pts.length !== 4) {
+        return prev.areaHa === "" ? prev : { ...prev, areaHa: "" }
+      }
+      const ha = polygonAreaHectares(pts)
+      if (!Number.isFinite(ha) || ha <= 0) {
+        return prev.areaHa === "" ? prev : { ...prev, areaHa: "" }
+      }
+      const next = ha.toFixed(2)
+      return prev.areaHa === next ? prev : { ...prev, areaHa: next }
+    })
+  }, [formData.polygonPoints])
+
   const handleOpenChange = (next: boolean) => {
     setOpen(next)
     if (!next) {
@@ -113,12 +140,21 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
         formData.sowingDate && `Siembra ${formData.sowingDate}`,
       ].filter(Boolean)
 
+      const parsedArea = parseFloat(formData.areaHa)
+      const areaHa =
+        formData.areaHa.trim() !== "" &&
+        Number.isFinite(parsedArea) &&
+        parsedArea > 0
+          ? parsedArea
+          : undefined
+
       await createPlot({
         farm_id: farmId,
         name: formData.name,
         crop_type: formData.cropType || undefined,
         description: descriptionParts.length ? descriptionParts.join(" · ") : undefined,
-        area_ha: formData.areaHa ? parseFloat(formData.areaHa) : undefined,
+        area_ha: areaHa,
+        status: "Sembrado",
         latitude: latSum / n,
         longitude: lonSum / n,
       })
@@ -126,9 +162,7 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
       onSuccess?.()
       handleOpenChange(false)
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Error al crear el lote",
-      )
+      setError(formatSubmitError(err))
     }
     setSubmitting(false)
   }
