@@ -308,7 +308,6 @@ export interface UserProfile {
   firstName: string
   lastName: string
   email: string
-  phone: string
   avatar: string | null
 }
 
@@ -325,7 +324,6 @@ export async function getUserProfile(): Promise<UserProfile> {
     firstName: "Juan",
     lastName: "Martinez",
     email: "juan@agrosmart.com",
-    phone: "+54 9 11 1234-5678",
     avatar: null,
   })
 }

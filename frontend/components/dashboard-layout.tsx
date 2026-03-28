@@ -1,5 +1,6 @@
 "use client"
 
+import { Toaster } from "sonner"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
 
@@ -15,6 +16,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <AppHeader />
         <main className="p-6">{children}</main>
       </div>
+      <Toaster richColors position="top-center" />
     </div>
   )
 }
