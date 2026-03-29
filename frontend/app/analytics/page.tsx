@@ -15,6 +15,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   CartesianGrid,
+  LabelList,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -32,6 +33,10 @@ import {
 type FarmOption = {
   id: string
   name: string
+}
+
+type PredictionChartPoint = PlotPredictionHistoryPoint & {
+  changeLabel: string | null
 }
 
 function buildFarmOptions(lots: Lot[]): FarmOption[] {
@@ -91,6 +96,34 @@ function formatAxisKgHa(value: number | string): string {
   return Math.round(Number(value)).toLocaleString("es-AR")
 }
 
+function formatChangePercent(value: number): string {
+  const sign = value > 0 ? "+" : ""
+  return `${sign}${value.toFixed(1)}%`
+}
+
+function buildPredictionChartData(
+  history: PlotPredictionHistoryPoint[],
+): PredictionChartPoint[] {
+  return history.map((point, index) => {
+    if (index === 0) {
+      return { ...point, changeLabel: null }
+    }
+
+    const previousValue = history[index - 1]?.predictedKgHa ?? null
+    if (previousValue == null || previousValue <= 0) {
+      return { ...point, changeLabel: null }
+    }
+
+    const deltaPercent =
+      ((point.predictedKgHa - previousValue) / previousValue) * 100
+
+    return {
+      ...point,
+      changeLabel: formatChangePercent(deltaPercent),
+    }
+  })
+}
+
 function AnalyticsPageInner() {
   const { selectedFarmId: scopedFarmId } = useFarmScope()
   const [lots, setLots] = useState<Lot[]>([])
@@ -104,6 +137,7 @@ function AnalyticsPageInner() {
   const farms = buildFarmOptions(lots)
   const lotsForSelectedFarm = selectedFarmId ? buildLotsForFarm(lots, selectedFarmId) : []
   const selectedLot = lots.find((lot) => lot.id === selectedLotId) ?? null
+  const chartData = history ? buildPredictionChartData(history) : []
 
   useEffect(() => {
     let active = true
@@ -346,12 +380,15 @@ function AnalyticsPageInner() {
                 <p className="text-sm text-muted-foreground">
                   {history.length} estimacion{history.length === 1 ? "" : "es"} registradas
                 </p>
+                <p className="text-xs text-muted-foreground">
+                  Cada punto muestra el cambio porcentual respecto de la estimacion anterior.
+                </p>
               </div>
 
               <div className="h-[360px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
-                    data={history}
+                    data={chartData}
                     margin={{ top: 12, right: 16, left: 8, bottom: 8 }}
                   >
                     <CartesianGrid
@@ -405,7 +442,15 @@ function AnalyticsPageInner() {
                         r: history.length === 1 ? 5 : 4,
                       }}
                       activeDot={{ r: 6, fill: "var(--color-primary)" }}
-                    />
+                    >
+                      <LabelList
+                        dataKey="changeLabel"
+                        position="top"
+                        offset={10}
+                        fill="var(--color-muted-foreground)"
+                        fontSize={11}
+                      />
+                    </Line>
                   </LineChart>
                 </ResponsiveContainer>
               </div>
