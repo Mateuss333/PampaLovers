@@ -124,10 +124,15 @@ function emptyForm(): NewLotFormData {
 
 interface NewLotFormProps {
   farmId: string | null
+  disabledReason?: string | null
   onSuccess?: () => void
 }
 
-export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
+export function NewLotForm({
+  farmId,
+  disabledReason = null,
+  onSuccess,
+}: NewLotFormProps) {
   const [open, setOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -241,16 +246,18 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
   }
 
   const polygonComplete = formData.polygonPoints.length === 4
+  const canCreateLot = farmId != null && farmId.trim() !== ""
 
   return (
-    <Dialog
+    <div className="flex flex-col items-end gap-1">
+      <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (next && !farmId) return
+        if (next && !canCreateLot) return
         handleOpenChange(next)
       }}
     >
-      {farmId ? (
+      {canCreateLot ? (
         <DialogTrigger asChild>
           <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
             <Plus className="h-4 w-4" />
@@ -262,7 +269,7 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
           type="button"
           disabled
           className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
-          title="Elegí un campo arriba (no «Todos los campos») para crear un lote"
+          title={disabledReason ?? "Selecciona una granja arriba para crear un lote"}
         >
           <Plus className="h-4 w-4" />
           Nuevo Lote
@@ -581,6 +588,12 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
           </DialogFooter>
         </form>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+      {!canCreateLot && disabledReason ? (
+        <p className="max-w-72 text-right text-xs text-muted-foreground">
+          {disabledReason}
+        </p>
+      ) : null}
+    </div>
   )
 }
