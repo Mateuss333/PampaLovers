@@ -44,7 +44,6 @@ export interface NewLotFormData {
   name: string
   group: string
   cropType: string
-  year: string
   sowingDate: string
   areaHa: string
   polygonPoints: LngLatTuple[]
@@ -52,7 +51,6 @@ export interface NewLotFormData {
   irrigationType: string
   fertilizerType: string
   pesticideUsageMl: string
-  harvestMonth: string
   cropDiseaseStatus: string
 }
 
@@ -66,9 +64,6 @@ const cropTypes = [
   "Arroz",
   "Algodón",
 ]
-
-const currentYear = new Date().getFullYear()
-const years = Array.from({ length: 10 }, (_, i) => (currentYear - 5 + i).toString())
 
 /** Valores en inglés para BD/API; `label` es solo lo que ve el usuario. */
 const irrigationOptions = [
@@ -90,17 +85,12 @@ const cropDiseaseOptions = [
   { value: "Moderate", label: "Moderado" },
   { value: "Severe", label: "Severo" },
 ] as const
-const months = [
-  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
-] as const
 
 function emptyForm(): NewLotFormData {
   return {
     name: "",
     group: "",
     cropType: "",
-    year: currentYear.toString(),
     sowingDate: "",
     areaHa: "",
     polygonPoints: [],
@@ -108,7 +98,6 @@ function emptyForm(): NewLotFormData {
     irrigationType: "",
     fertilizerType: "",
     pesticideUsageMl: "",
-    harvestMonth: "",
     cropDiseaseStatus: "",
   }
 }
@@ -180,18 +169,8 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
       const lonSum = pts.reduce((s, [lon]) => s + lon, 0)
       const n = pts.length
       const descriptionParts = [
-        formData.year && `Campaña ${formData.year}`,
         formData.sowingDate && `Siembra ${formData.sowingDate}`,
-        formData.harvestMonth && `Cosecha: ${formData.harvestMonth}`,
       ].filter(Boolean)
-
-      const parsedArea = parseFloat(formData.areaHa)
-      const areaHa =
-        formData.areaHa.trim() !== "" &&
-        Number.isFinite(parsedArea) &&
-        parsedArea > 0
-          ? parsedArea
-          : undefined
 
       const parsedPh = parseFloat(formData.soilPh)
       const parsedPesticide = parseFloat(formData.pesticideUsageMl)
@@ -203,7 +182,6 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
         crop_type: formData.cropType || undefined,
         description: descriptionParts.length ? descriptionParts.join(" · ") : undefined,
         sowing_date: formData.sowingDate.trim() || undefined,
-        area_ha: areaHa,
         status: "Sembrado",
         latitude: latSum / n,
         longitude: lonSum / n,
@@ -320,7 +298,7 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
               Información del Cultivo
             </h3>
 
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="cropType" className="text-foreground">
                   Tipo de Cultivo <span className="text-destructive">*</span>
@@ -340,31 +318,6 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
                     {cropTypes.map((crop) => (
                       <SelectItem key={crop} value={crop.toLowerCase()}>
                         {crop}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="year" className="text-foreground">
-                  Año <span className="text-destructive">*</span>
-                </Label>
-                <Select
-                  value={formData.year}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, year: value })
-                  }
-                  required
-                  disabled={submitting}
-                >
-                  <SelectTrigger id="year" className="bg-background">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {years.map((year) => (
-                      <SelectItem key={year} value={year}>
-                        {year}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -398,17 +351,17 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
                 </Label>
                 <Input
                   id="areaHa"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="ej: 85"
+                  readOnly
+                  tabIndex={-1}
+                  placeholder="Marcá 4 puntos en el mapa"
                   value={formData.areaHa}
-                  onChange={(e) =>
-                    setFormData({ ...formData, areaHa: e.target.value })
-                  }
-                  className="bg-background font-mono"
+                  className="bg-muted/50 font-mono text-foreground cursor-default"
                   disabled={submitting}
+                  aria-readonly="true"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Se calcula sola a partir del contorno en el mapa.
+                </p>
               </div>
             </div>
           </div>
@@ -532,30 +485,6 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-
-            <div className="max-w-md space-y-2">
-              <Label htmlFor="harvestMonth" className="text-foreground">
-                Mes de Cosecha
-              </Label>
-              <Select
-                value={formData.harvestMonth}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, harvestMonth: value })
-                }
-                disabled={submitting}
-              >
-                <SelectTrigger id="harvestMonth" className="bg-background">
-                  <SelectValue placeholder="Seleccionar" />
-                </SelectTrigger>
-                <SelectContent>
-                  {months.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
           </div>
 

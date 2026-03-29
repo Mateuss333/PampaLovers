@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select,
@@ -38,6 +37,19 @@ import { createClient } from "@/lib/supabase/client"
 import { useFarmScope } from "@/components/farm-scope-context"
 
 const DELETE_ACCOUNT_PHRASE = "ELIMINAR"
+
+function formatDeleteAccountError(message: string): string {
+  const lower = message.toLowerCase()
+  if (
+    lower.includes("non-2xx") ||
+    lower.includes("edge function") ||
+    lower.includes("failed to send a request") ||
+    lower.includes("failed to fetch")
+  ) {
+    return `${message} Comprobá que la Edge Function delete-account esté desplegada y el secret SUPABASE_SERVICE_ROLE_KEY configurado (véase README del frontend, sección «Eliminar cuenta»).`
+  }
+  return message
+}
 
 function SettingsPageInner() {
   const router = useRouter()
@@ -104,12 +116,11 @@ function SettingsPageInner() {
     e.preventDefault()
     setSaving(true)
     try {
-      await updateProfile({ name, email })
+      await updateProfile({ name })
       if (farmSettings && !farmScopeLocked) {
         await updateFarm(farmSettings.id, {
           name: farmName,
           location_name: location,
-          size_ha: farmSize ? parseFloat(farmSize) : undefined,
           timezone,
           currency,
         })
@@ -143,7 +154,7 @@ function SettingsPageInner() {
         } catch {
           /* usar message por defecto */
         }
-        toast.error(message)
+        toast.error(formatDeleteAccountError(message))
         return
       }
 
@@ -153,7 +164,7 @@ function SettingsPageInner() {
         "error" in data &&
         data.error != null
       ) {
-        toast.error(String(data.error))
+        toast.error(formatDeleteAccountError(String(data.error)))
         return
       }
 
@@ -164,9 +175,9 @@ function SettingsPageInner() {
       router.push("/login")
       router.refresh()
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "No se pudo eliminar la cuenta",
-      )
+      const msg =
+        err instanceof Error ? err.message : "No se pudo eliminar la cuenta"
+      toast.error(formatDeleteAccountError(msg))
     }
     setDeleteAccountLoading(false)
   }
@@ -193,7 +204,7 @@ function SettingsPageInner() {
                   <div>
                     <CardTitle className="text-foreground">Información Personal</CardTitle>
                     <CardDescription>
-                      Actualiza tu información de contacto
+                      El email no se puede cambiar desde aquí
                     </CardDescription>
                   </div>
                 </div>
@@ -223,9 +234,11 @@ function SettingsPageInner() {
                         id="email"
                         type="email"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="bg-background"
+                        readOnly
+                        tabIndex={-1}
+                        className="bg-muted/50 cursor-default"
                         autoComplete="email"
+                        aria-readonly="true"
                       />
                     )}
                   </div>
@@ -242,8 +255,8 @@ function SettingsPageInner() {
                     <CardTitle className="text-foreground">Detalles del campo</CardTitle>
                     <CardDescription>
                       {farmScopeLocked
-                        ? "Seleccioná un campo en la barra superior para editar nombre, superficie y ubicación."
-                        : "Información del establecimiento del campo seleccionado"}
+                        ? "Seleccioná un campo en la barra superior para editar nombre y ubicación."
+                        : "La superficie total es la suma de los lotes; el resto es del establecimiento seleccionado"}
                     </CardDescription>
                   </div>
                 </div>
@@ -269,14 +282,20 @@ function SettingsPageInner() {
                     {loading ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <Input
-                        id="farmSize"
-                        type="number"
-                        value={farmSize}
-                        onChange={(e) => setFarmSize(e.target.value)}
-                        className="bg-background font-mono"
-                        disabled={farmScopeLocked || !farmSettings}
-                      />
+                      <>
+                        <Input
+                          id="farmSize"
+                          readOnly
+                          tabIndex={-1}
+                          value={farmScopeLocked || !farmSettings ? "—" : farmSize}
+                          className="bg-muted/50 font-mono cursor-default"
+                          disabled={farmScopeLocked || !farmSettings}
+                          aria-readonly="true"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Suma de la superficie de todos los lotes del campo.
+                        </p>
+                      </>
                     )}
                   </div>
                   <div className="space-y-2 sm:col-span-2">
@@ -367,35 +386,6 @@ function SettingsPageInner() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Quick Stats */}
-            <Card className="border-border/60">
-              <CardHeader>
-                <CardTitle className="text-base text-foreground">Tu Cuenta</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Plan</span>
-                  <span className="font-medium text-foreground">Professional</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Lotes</span>
-                  <span className="font-mono font-medium text-foreground">24 / 50</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Imágenes/mes</span>
-                  <span className="font-mono font-medium text-foreground">1,247 / 2,000</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Miembro desde</span>
-                  <span className="font-medium text-foreground">Mar 2024</span>
-                </div>
-                <Separator />
-                <Button variant="outline" className="w-full" type="button">
-                  Actualizar Plan
-                </Button>
-              </CardContent>
-            </Card>
-
             {/* Danger Zone */}
             <Card className="border-destructive/40">
               <CardHeader>

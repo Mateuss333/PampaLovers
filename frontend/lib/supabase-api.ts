@@ -932,15 +932,33 @@ export async function getFarmById(farmId: string): Promise<DbFarm | null> {
   return data as DbFarm
 }
 
+/** Suma `plots.area_ha` del campo (hectáreas), redondeada a 2 decimales. */
+async function sumPlotAreaHaForFarm(farmId: string): Promise<number> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from("plots")
+    .select("area_ha")
+    .eq("farm_id", farmId)
+
+  if (error) throw new Error(error.message)
+
+  const raw = (data ?? []).reduce(
+    (sum, p) => sum + (Number(p.area_ha) || 0),
+    0,
+  )
+  return Math.round(raw * 100) / 100
+}
+
 export async function getFarmSettingsForFarm(
   farmId: string,
 ): Promise<FarmSettings | null> {
   const farm = await getFarmById(farmId)
   if (!farm) return null
+  const size = await sumPlotAreaHaForFarm(farmId)
   return {
     id: farm.id,
     name: farm.name,
-    size: Number(farm.size_ha) || 0,
+    size,
     location: farm.location_name ?? "",
     timezone: farm.timezone ?? "america-buenos-aires",
     currency: farm.currency ?? "ars",
@@ -969,10 +987,11 @@ export async function getUserFarm(): Promise<DbFarm | null> {
 export async function getFarmSettings(): Promise<FarmSettings | null> {
   const farm = await getUserFarm()
   if (!farm) return null
+  const size = await sumPlotAreaHaForFarm(farm.id)
   return {
     id: farm.id,
     name: farm.name,
-    size: Number(farm.size_ha) || 0,
+    size,
     location: farm.location_name ?? "",
     timezone: farm.timezone ?? "america-buenos-aires",
     currency: farm.currency ?? "ars",
