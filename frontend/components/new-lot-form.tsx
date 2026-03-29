@@ -86,6 +86,26 @@ const cropDiseaseOptions = [
   { value: "Severe", label: "Severo" },
 ] as const
 
+function formatDateInputValue(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function getLatestAllowedSowingDate(): string {
+  const date = new Date()
+  date.setHours(0, 0, 0, 0)
+  date.setDate(date.getDate() - 7)
+  return formatDateInputValue(date)
+}
+
+function formatDisplayDate(value: string): string {
+  const date = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString("es-AR")
+}
+
 function emptyForm(): NewLotFormData {
   return {
     name: "",
@@ -112,6 +132,7 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [formData, setFormData] = useState<NewLotFormData>(emptyForm)
+  const latestAllowedSowingDate = getLatestAllowedSowingDate()
 
   useEffect(() => {
     setFormData((prev) => {
@@ -161,6 +182,17 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
       const parsedGroup = parseInt(formData.group, 10)
       if (!Number.isFinite(parsedGroup) || parsedGroup < 1) {
         setError("El grupo debe ser un número válido.")
+        setSubmitting(false)
+        return
+      }
+
+      if (
+        formData.sowingDate.trim() !== "" &&
+        formData.sowingDate > latestAllowedSowingDate
+      ) {
+        setError(
+          `La fecha de siembra debe ser igual o anterior al ${formatDisplayDate(latestAllowedSowingDate)}.`,
+        )
         setSubmitting(false)
         return
       }
@@ -331,6 +363,7 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
                 <Input
                   id="sowingDate"
                   type="date"
+                  max={latestAllowedSowingDate}
                   value={formData.sowingDate}
                   onChange={(e) =>
                     setFormData({ ...formData, sowingDate: e.target.value })
@@ -338,7 +371,11 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
                   className="bg-background"
                   required
                   disabled={submitting}
+                  aria-describedby="sowingDate-help"
                 />
+                <p id="sowingDate-help" className="text-xs text-muted-foreground">
+                  Solo se permiten fechas hasta el {formatDisplayDate(latestAllowedSowingDate)}.
+                </p>
               </div>
             </div>
           </div>
