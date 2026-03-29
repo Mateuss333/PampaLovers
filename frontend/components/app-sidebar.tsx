@@ -3,7 +3,6 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-  LayoutDashboard,
   Map,
   Satellite,
   BarChart3,
@@ -15,7 +14,6 @@ import {
 import { cn } from "@/lib/utils"
 
 const navigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Mis Lotes", href: "/lotes", icon: Map },
   { name: "Historial", href: "/historial", icon: History },
   { name: "Vista Satelital", href: "/satelite", icon: Satellite },

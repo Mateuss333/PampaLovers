@@ -40,7 +40,7 @@ export default function OnboardingPage() {
         location_name: location.trim() || undefined,
         description: description.trim() || undefined,
       })
-      router.push("/")
+      router.push("/lotes")
       router.refresh()
     } catch (err) {
       const msg =

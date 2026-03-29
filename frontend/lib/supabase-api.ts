@@ -146,16 +146,7 @@ export interface FarmSettings {
   currency: string
 }
 
-export interface DashboardMetric {
-  id: string
-  title: string
-  value: string
-  unit: string
-  change: string
-  changeType: "positive" | "negative" | "neutral"
-}
-
-/** Rendimiento agregado por cultivo para el dashboard (t/ha). */
+/** Rendimiento agregado por cultivo (t/ha), p. ej. vista Rendimientos. */
 export interface YieldByCrop {
   crop: string
   actual: number | null
@@ -1204,63 +1195,6 @@ export async function getYieldComparisonByCrop(
       prediction: acc.predDen > 0 ? acc.predNum / acc.predDen : null,
     }
   })
-}
-
-// ──────────────────────────────────────────────
-// DASHBOARD METRICS (computed from plots)
-// ──────────────────────────────────────────────
-
-export async function getDashboardMetrics(
-  options?: FarmScopeOptions,
-): Promise<DashboardMetric[]> {
-  const supabase = createClient()
-  const farmIds = await getFarmIdsForScope(supabase, options?.farmId)
-  const empty: DashboardMetric[] = [
-    { id: "area", title: "Área Total", value: "0", unit: "hectáreas", change: "—", changeType: "neutral" },
-    { id: "lots", title: "Lotes Activos", value: "0", unit: "lotes", change: "—", changeType: "neutral" },
-    { id: "yield", title: "NDVI Promedio", value: "0.00", unit: "", change: "—", changeType: "neutral" },
-  ]
-
-  if (farmIds.length === 0) return empty
-
-  const { data: plots, error } = await supabase
-    .from("plots")
-    .select("area_ha, ndvi_index")
-    .in("farm_id", farmIds)
-
-  if (error || !plots || plots.length === 0) return empty
-
-  const totalArea = plots.reduce((sum, p) => sum + (Number(p.area_ha) || 0), 0)
-  const lotCount = plots.length
-  const avgNdvi =
-    plots.reduce((sum, p) => sum + (Number(p.ndvi_index) || 0), 0) / lotCount
-
-  return [
-    {
-      id: "area",
-      title: "Área Total",
-      value: totalArea.toLocaleString("es-AR", { maximumFractionDigits: 0 }),
-      unit: "hectáreas",
-      change: "—",
-      changeType: "neutral",
-    },
-    {
-      id: "lots",
-      title: "Lotes Activos",
-      value: String(lotCount),
-      unit: "lotes",
-      change: "—",
-      changeType: "neutral",
-    },
-    {
-      id: "yield",
-      title: "NDVI Promedio",
-      value: avgNdvi.toFixed(2),
-      unit: "",
-      change: "—",
-      changeType: "neutral",
-    },
-  ]
 }
 
 // ──────────────────────────────────────────────

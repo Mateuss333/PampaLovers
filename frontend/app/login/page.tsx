@@ -59,7 +59,7 @@ export default function LoginPage() {
       if (!farms || farms.length === 0) {
         router.push("/onboarding")
       } else {
-        router.push("/")
+        router.push("/lotes")
       }
       router.refresh()
 
@@ -92,7 +92,7 @@ export default function LoginPage() {
       if (!farms || farms.length === 0) {
         router.push("/onboarding")
       } else {
-        router.push("/")
+        router.push("/lotes")
       }
       router.refresh()
     }
