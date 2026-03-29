@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Search, Eye } from "lucide-react"
 import { fetchHarvestLogs, type HarvestLog } from "@/lib/supabase-api"
+import { useFarmScope } from "@/components/farm-scope-context"
 
 function TableSkeleton() {
   return (
@@ -65,7 +66,8 @@ function formatDateTime(iso: string) {
   }
 }
 
-export default function HistorialPage() {
+function HistorialPageInner() {
+  const { selectedFarmId } = useFarmScope()
   const [logs, setLogs] = useState<HarvestLog[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -77,7 +79,11 @@ export default function HistorialPage() {
     async function loadData() {
       setLoading(true)
       try {
-        const data = await fetchHarvestLogs()
+        const data = await fetchHarvestLogs(
+          selectedFarmId === "all"
+            ? undefined
+            : { farmId: selectedFarmId },
+        )
         setLogs(data)
       } catch (err) {
         console.error("Error loading harvest logs:", err)
@@ -85,8 +91,8 @@ export default function HistorialPage() {
       }
       setLoading(false)
     }
-    loadData()
-  }, [])
+    void loadData()
+  }, [selectedFarmId])
 
   const filteredLogs = logs?.filter(
     (log) =>
@@ -95,14 +101,15 @@ export default function HistorialPage() {
   )
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             Historial de Cosechas
           </h1>
           <p className="text-muted-foreground">
-            Registro histórico de todas las cosechas realizadas
+            {selectedFarmId === "all"
+              ? "Registro histórico de todas las cosechas realizadas"
+              : "Cosechas del campo seleccionado en la barra superior"}
           </p>
         </div>
 
@@ -345,6 +352,13 @@ export default function HistorialPage() {
           </DialogContent>
         </Dialog>
       </div>
+  )
+}
+
+export default function HistorialPage() {
+  return (
+    <DashboardLayout>
+      <HistorialPageInner />
     </DashboardLayout>
   )
 }

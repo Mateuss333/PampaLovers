@@ -389,10 +389,28 @@ async function getUserFarmIds(
   return (data ?? []).map((row: { id: string }) => row.id)
 }
 
-export async function fetchLots(): Promise<Lot[]> {
-  const supabase = createClient()
+/** IDs de `farms` para consultas: un campo concreto (si pertenece al usuario) o todos. */
+async function getFarmIdsForScope(
+  supabase: SupabaseClient,
+  farmId?: string,
+): Promise<string[]> {
   const farmIds = await getUserFarmIds(supabase)
   if (!farmIds || farmIds.length === 0) return []
+  if (farmId != null && farmId !== "") {
+    return farmIds.includes(farmId) ? [farmId] : []
+  }
+  return farmIds
+}
+
+export interface FarmScopeOptions {
+  /** Si se pasa, solo datos de este campo (debe ser del usuario). */
+  farmId?: string
+}
+
+export async function fetchLots(options?: FarmScopeOptions): Promise<Lot[]> {
+  const supabase = createClient()
+  const farmIds = await getFarmIdsForScope(supabase, options?.farmId)
+  if (farmIds.length === 0) return []
 
   const { data, error } = await supabase
     .from("plots")
@@ -880,6 +898,55 @@ async function checkPlanLimit(
 // FARM
 // ──────────────────────────────────────────────
 
+export async function fetchUserFarms(): Promise<DbFarm[]> {
+  const supabase = createClient()
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+  if (authError || !user) return []
+
+  const { data, error } = await supabase
+    .from("farms")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("name", { ascending: true })
+
+  if (error) throw error
+  return (data ?? []) as DbFarm[]
+}
+
+/** Campo del usuario por id, o null si no existe o no es tuyo. */
+export async function getFarmById(farmId: string): Promise<DbFarm | null> {
+  const supabase = createClient()
+  const allowed = await getFarmIdsForScope(supabase, farmId)
+  if (allowed.length !== 1) return null
+
+  const { data, error } = await supabase
+    .from("farms")
+    .select("*")
+    .eq("id", farmId)
+    .maybeSingle()
+
+  if (error || !data) return null
+  return data as DbFarm
+}
+
+export async function getFarmSettingsForFarm(
+  farmId: string,
+): Promise<FarmSettings | null> {
+  const farm = await getFarmById(farmId)
+  if (!farm) return null
+  return {
+    id: farm.id,
+    name: farm.name,
+    size: Number(farm.size_ha) || 0,
+    location: farm.location_name ?? "",
+    timezone: farm.timezone ?? "america-buenos-aires",
+    currency: farm.currency ?? "ars",
+  }
+}
+
 export async function getUserFarm(): Promise<DbFarm | null> {
   const supabase = createClient()
   const {
@@ -988,10 +1055,12 @@ export async function updateFarm(
 // YIELD BY CROP (plots + plot_previous_yields + plot_prediction)
 // ──────────────────────────────────────────────
 
-export async function getYieldComparisonByCrop(): Promise<YieldByCrop[]> {
+export async function getYieldComparisonByCrop(
+  options?: FarmScopeOptions,
+): Promise<YieldByCrop[]> {
   const supabase = createClient()
-  const farmIds = await getUserFarmIds(supabase)
-  if (!farmIds || farmIds.length === 0) return []
+  const farmIds = await getFarmIdsForScope(supabase, options?.farmId)
+  if (farmIds.length === 0) return []
 
   // `plot_prediction` se consulta aparte: el embed desde plots puede fallar si PostgREST no tiene la relación inversa.
   const { data: plots, error } = await supabase
@@ -1081,16 +1150,18 @@ export async function getYieldComparisonByCrop(): Promise<YieldByCrop[]> {
 // DASHBOARD METRICS (computed from plots)
 // ──────────────────────────────────────────────
 
-export async function getDashboardMetrics(): Promise<DashboardMetric[]> {
+export async function getDashboardMetrics(
+  options?: FarmScopeOptions,
+): Promise<DashboardMetric[]> {
   const supabase = createClient()
-  const farmIds = await getUserFarmIds(supabase)
+  const farmIds = await getFarmIdsForScope(supabase, options?.farmId)
   const empty: DashboardMetric[] = [
     { id: "area", title: "Área Total", value: "0", unit: "hectáreas", change: "—", changeType: "neutral" },
     { id: "lots", title: "Lotes Activos", value: "0", unit: "lotes", change: "—", changeType: "neutral" },
     { id: "yield", title: "NDVI Promedio", value: "0.00", unit: "", change: "—", changeType: "neutral" },
   ]
 
-  if (!farmIds || farmIds.length === 0) return empty
+  if (farmIds.length === 0) return empty
 
   const { data: plots, error } = await supabase
     .from("plots")
@@ -1459,10 +1530,12 @@ export async function harvestPlot(
   return updated as DbPlot
 }
 
-export async function fetchHarvestLogs(): Promise<HarvestLog[]> {
+export async function fetchHarvestLogs(
+  options?: FarmScopeOptions,
+): Promise<HarvestLog[]> {
   const supabase = createClient()
-  const farmIds = await getUserFarmIds(supabase)
-  if (!farmIds || farmIds.length === 0) return []
+  const farmIds = await getFarmIdsForScope(supabase, options?.farmId)
+  if (farmIds.length === 0) return []
 
   const { data, error } = await supabase
     .from("harvest_logs")

@@ -39,6 +39,7 @@ import {
   type Lot,
   type SoilMetric,
 } from "@/lib/supabase-api"
+import { useFarmScope } from "@/components/farm-scope-context"
 
 const statusColors: Record<string, string> = {
   "Óptimo": "bg-primary/10 text-primary border-primary/20",
@@ -58,7 +59,8 @@ const iconMap: Record<string, typeof FlaskConical> = {
   potassium: FlaskConical,
 }
 
-export default function AnalyticsPage() {
+function AnalyticsPageInner() {
+  const { selectedFarmId } = useFarmScope()
   const [selectedCrop, setSelectedCrop] = useState("all")
   const [lots, setLots] = useState<Lot[]>([])
   const [selectedLot, setSelectedLot] = useState<string | null>(null)
@@ -71,24 +73,29 @@ export default function AnalyticsPage() {
     async function loadData() {
       setLoading(true)
       try {
-        const [yieldsData, ndviData, lotsData] = await Promise.all([
+        const lotsData = await fetchLots(
+          selectedFarmId === "all"
+            ? undefined
+            : { farmId: selectedFarmId },
+        )
+        const [yieldsData, ndviData] = await Promise.all([
           getHistoricalYields(),
           getNDVITrend(),
-          fetchLots(),
         ])
         setHistoricalYields(yieldsData)
         setNDVITrend(ndviData)
         setLots(lotsData)
-        if (lotsData.length > 0) {
-          setSelectedLot(lotsData[0].id)
-        }
+        setSelectedLot((prev) => {
+          if (prev && lotsData.some((l) => l.id === prev)) return prev
+          return lotsData.length > 0 ? lotsData[0].id : null
+        })
       } catch (err) {
         console.error("Error loading analytics:", err)
       }
       setLoading(false)
     }
-    loadData()
-  }, [])
+    void loadData()
+  }, [selectedFarmId])
 
   useEffect(() => {
     if (!selectedLot) return
@@ -100,15 +107,16 @@ export default function AnalyticsPage() {
   }, [selectedLot])
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             Rendimientos e Info del Campo
           </h1>
           <p className="text-muted-foreground">
-            Análisis histórico y predicciones basadas en Machine Learning
+            {selectedFarmId === "all"
+              ? "Análisis histórico y predicciones basadas en Machine Learning"
+              : "Lotes del campo seleccionado en la barra superior; gráficos globales siguen siendo ilustrativos."}
           </p>
         </div>
 
@@ -521,6 +529,13 @@ export default function AnalyticsPage() {
           </TabsContent>
         </Tabs>
       </div>
+  )
+}
+
+export default function AnalyticsPage() {
+  return (
+    <DashboardLayout>
+      <AnalyticsPageInner />
     </DashboardLayout>
   )
 }

@@ -29,17 +29,19 @@ import {
 import { User, Building2, MapPin } from "lucide-react"
 import {
   getUserProfile,
-  getFarmSettings,
+  getFarmSettingsForFarm,
   updateProfile,
   updateFarm,
   type FarmSettings,
 } from "@/lib/supabase-api"
 import { createClient } from "@/lib/supabase/client"
+import { useFarmScope } from "@/components/farm-scope-context"
 
 const DELETE_ACCOUNT_PHRASE = "ELIMINAR"
 
-export default function SettingsPage() {
+function SettingsPageInner() {
   const router = useRouter()
+  const { selectedFarmId } = useFarmScope()
   const [farmSettings, setFarmSettings] = useState<FarmSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -56,38 +58,54 @@ export default function SettingsPage() {
   const [deleteAccountInput, setDeleteAccountInput] = useState("")
   const [deleteAccountLoading, setDeleteAccountLoading] = useState(false)
 
+  const farmScopeLocked = selectedFarmId === "all"
+
   useEffect(() => {
     async function loadData() {
       setLoading(true)
       try {
-        const [profile, farm] = await Promise.all([
-          getUserProfile(),
-          getFarmSettings(),
-        ])
-        setFarmSettings(farm)
+        const profile = await getUserProfile()
         setName(profile.name)
         setEmail(profile.email)
-        if (farm) {
-          setFarmName(farm.name)
-          setFarmSize(String(farm.size))
-          setLocation(farm.location)
-          setTimezone(farm.timezone)
-          setCurrency(farm.currency)
+
+        if (selectedFarmId === "all") {
+          setFarmSettings(null)
+          setFarmName("")
+          setFarmSize("")
+          setLocation("")
+          setTimezone("america-buenos-aires")
+          setCurrency("ars")
+        } else {
+          const farm = await getFarmSettingsForFarm(selectedFarmId)
+          setFarmSettings(farm)
+          if (farm) {
+            setFarmName(farm.name)
+            setFarmSize(String(farm.size))
+            setLocation(farm.location)
+            setTimezone(farm.timezone)
+            setCurrency(farm.currency)
+          } else {
+            setFarmName("")
+            setFarmSize("")
+            setLocation("")
+            setTimezone("america-buenos-aires")
+            setCurrency("ars")
+          }
         }
       } catch (err) {
         console.error("Error loading settings:", err)
       }
       setLoading(false)
     }
-    loadData()
-  }, [])
+    void loadData()
+  }, [selectedFarmId])
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
     try {
       await updateProfile({ name, email })
-      if (farmSettings) {
+      if (farmSettings && !farmScopeLocked) {
         await updateFarm(farmSettings.id, {
           name: farmName,
           location_name: location,
@@ -154,13 +172,13 @@ export default function SettingsPage() {
   }
 
   return (
-    <DashboardLayout>
+    <>
       <div className="space-y-6">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Configuración</h1>
           <p className="text-muted-foreground">
-            Administra tu perfil, preferencias y configuración de la finca
+            Perfil y datos del campo elegido en la barra superior (no «Todos los campos»).
           </p>
         </div>
 
@@ -221,9 +239,11 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-2">
                   <Building2 className="h-5 w-5 text-muted-foreground" />
                   <div>
-                    <CardTitle className="text-foreground">Detalles de la Finca</CardTitle>
+                    <CardTitle className="text-foreground">Detalles del campo</CardTitle>
                     <CardDescription>
-                      Información de tu establecimiento agrícola
+                      {farmScopeLocked
+                        ? "Seleccioná un campo en la barra superior para editar nombre, superficie y ubicación."
+                        : "Información del establecimiento del campo seleccionado"}
                     </CardDescription>
                   </div>
                 </div>
@@ -231,7 +251,7 @@ export default function SettingsPage() {
               <CardContent className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="farmName" className="text-foreground">Nombre de la Finca</Label>
+                    <Label htmlFor="farmName" className="text-foreground">Nombre del campo</Label>
                     {loading ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
@@ -240,6 +260,7 @@ export default function SettingsPage() {
                         value={farmName}
                         onChange={(e) => setFarmName(e.target.value)}
                         className="bg-background"
+                        disabled={farmScopeLocked || !farmSettings}
                       />
                     )}
                   </div>
@@ -254,6 +275,7 @@ export default function SettingsPage() {
                         value={farmSize}
                         onChange={(e) => setFarmSize(e.target.value)}
                         className="bg-background font-mono"
+                        disabled={farmScopeLocked || !farmSettings}
                       />
                     )}
                   </div>
@@ -269,6 +291,7 @@ export default function SettingsPage() {
                           className="pl-10 bg-background"
                           value={location}
                           onChange={(e) => setLocation(e.target.value)}
+                          disabled={farmScopeLocked || !farmSettings}
                         />
                       </div>
                     )}
@@ -278,7 +301,11 @@ export default function SettingsPage() {
                     {loading ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <Select value={timezone} onValueChange={setTimezone}>
+                      <Select
+                        value={timezone}
+                        onValueChange={setTimezone}
+                        disabled={farmScopeLocked || !farmSettings}
+                      >
                         <SelectTrigger id="timezone" className="bg-background">
                           <SelectValue />
                         </SelectTrigger>
@@ -301,7 +328,11 @@ export default function SettingsPage() {
                     {loading ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <Select value={currency} onValueChange={setCurrency}>
+                      <Select
+                        value={currency}
+                        onValueChange={setCurrency}
+                        disabled={farmScopeLocked || !farmSettings}
+                      >
                         <SelectTrigger id="currency" className="bg-background">
                           <SelectValue />
                         </SelectTrigger>
@@ -320,7 +351,7 @@ export default function SettingsPage() {
             <div className="rounded-lg border border-border bg-card px-4 py-4 sm:px-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-muted-foreground">
-                  Guarda nombre, email y datos de la finca. El resto de opciones del panel se gestionan aparte.
+                  Guarda perfil siempre; datos del campo solo con un campo concreto seleccionado arriba.
                 </p>
                 <Button
                   type="submit"
@@ -443,6 +474,14 @@ export default function SettingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  )
+}
+
+export default function SettingsPage() {
+  return (
+    <DashboardLayout>
+      <SettingsPageInner />
     </DashboardLayout>
   )
 }

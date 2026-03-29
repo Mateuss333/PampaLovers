@@ -233,13 +233,31 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
   const polygonComplete = formData.polygonPoints.length === 4
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground">
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (next && !farmId) return
+        handleOpenChange(next)
+      }}
+    >
+      {farmId ? (
+        <DialogTrigger asChild>
+          <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+            <Plus className="h-4 w-4" />
+            Nuevo Lote
+          </Button>
+        </DialogTrigger>
+      ) : (
+        <Button
+          type="button"
+          disabled
+          className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+          title="Elegí un campo arriba (no «Todos los campos») para crear un lote"
+        >
           <Plus className="h-4 w-4" />
           Nuevo Lote
         </Button>
-      </DialogTrigger>
+      )}
       <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-foreground">Crear Nuevo Lote</DialogTitle>

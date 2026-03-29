@@ -51,7 +51,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Search, Filter, MoreHorizontal, Eye, Pencil, Trash2, Wheat, Sprout } from "lucide-react"
 import {
   fetchLots,
-  getUserFarm,
   getPlotRow,
   updatePlot,
   deletePlot,
@@ -61,6 +60,7 @@ import {
   type DbPlot,
 } from "@/lib/supabase-api"
 import { NewLotForm } from "@/components/new-lot-form"
+import { useFarmScope } from "@/components/farm-scope-context"
 
 const statusColors: Record<string, string> = {
   Sembrado: "bg-primary/15 text-primary border-primary/30",
@@ -156,9 +156,9 @@ function formatDateTime(iso: string) {
   }
 }
 
-export default function LotesPage() {
+function LotesPageInner() {
+  const { selectedFarmId } = useFarmScope()
   const [lots, setLots] = useState<Lot[] | null>(null)
-  const [farmId, setFarmId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
 
@@ -201,8 +201,14 @@ export default function LotesPage() {
   const [cyclePesticideMl, setCyclePesticideMl] = useState("")
   const [cycleDisease, setCycleDisease] = useState<string>("None")
 
+  function lotsScope() {
+    return selectedFarmId === "all"
+      ? undefined
+      : { farmId: selectedFarmId }
+  }
+
   async function refreshLots() {
-    const data = await fetchLots()
+    const data = await fetchLots(lotsScope())
     setLots(data)
   }
 
@@ -210,20 +216,16 @@ export default function LotesPage() {
     async function loadData() {
       setLoading(true)
       try {
-        const [lotsData, farm] = await Promise.all([
-          fetchLots(),
-          getUserFarm(),
-        ])
+        const lotsData = await fetchLots(lotsScope())
         setLots(lotsData)
-        if (farm) setFarmId(farm.id)
       } catch (err) {
         console.error("Error loading lots:", err)
         setLots([])
       }
       setLoading(false)
     }
-    loadData()
-  }, [])
+    void loadData()
+  }, [selectedFarmId])
 
   async function openDetail(lotId: string) {
     setDetailOpen(true)
@@ -443,19 +445,23 @@ export default function LotesPage() {
       lot.crop.toLowerCase().includes(searchQuery.toLowerCase()),
   )
 
+  const newLotFarmId =
+    selectedFarmId === "all" ? null : selectedFarmId
+
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">
               Administrar Lotes
             </h1>
             <p className="text-muted-foreground">
-              Gestiona y monitorea todos tus lotes agrícolas
+              {selectedFarmId === "all"
+                ? "Gestiona y monitorea todos tus lotes agrícolas"
+                : "Lotes del campo seleccionado en la barra superior"}
             </p>
           </div>
-          <NewLotForm farmId={farmId} onSuccess={refreshLots} />
+          <NewLotForm farmId={newLotFarmId} onSuccess={refreshLots} />
         </div>
 
         <Card className="border-border/60">
@@ -1119,6 +1125,13 @@ export default function LotesPage() {
           </DialogContent>
         </Dialog>
       </div>
+  )
+}
+
+export default function LotesPage() {
+  return (
+    <DashboardLayout>
+      <LotesPageInner />
     </DashboardLayout>
   )
 }

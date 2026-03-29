@@ -17,6 +17,7 @@ import {
   TriangleAlert,
 } from "lucide-react"
 import { fetchLots, type Lot } from "@/lib/supabase-api"
+import { useFarmScope } from "@/components/farm-scope-context"
 import {
   SatelliteMap,
   type SatelliteMapHandle,
@@ -41,7 +42,8 @@ function lotHasPolygon(lot: Lot): boolean {
   return !!(lot.polygon && lot.polygon.length >= 3)
 }
 
-export default function SatelitePage() {
+function SatelitePageInner() {
+  const { selectedFarmId } = useFarmScope()
   const mapRef = useRef<SatelliteMapHandle>(null)
   const [mapType, setMapType] = useState<"satellite" | "streets">("satellite")
   const [lots, setLots] = useState<Lot[] | null>(null)
@@ -52,14 +54,20 @@ export default function SatelitePage() {
     async function loadData() {
       setLoading(true)
       try {
-        setLots(await fetchLots())
+        setLots(
+          await fetchLots(
+            selectedFarmId === "all"
+              ? undefined
+              : { farmId: selectedFarmId },
+          ),
+        )
       } catch {
         setLots([])
       }
       setLoading(false)
     }
-    loadData()
-  }, [])
+    void loadData()
+  }, [selectedFarmId])
 
   const satellitePlots = useMemo(() => {
     if (!lots) return []
@@ -131,12 +139,13 @@ export default function SatelitePage() {
   )
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Vista Satelital</h1>
           <p className="text-muted-foreground">
-            Mapa base con tus lotes dibujados cuando tengan polígono guardado en la base.
+            {selectedFarmId === "all"
+              ? "Mapa base con tus lotes dibujados cuando tengan polígono guardado en la base."
+              : "Lotes del campo seleccionado en la barra superior."}
           </p>
         </div>
 
@@ -402,6 +411,13 @@ export default function SatelitePage() {
           </div>
         </div>
       </div>
+  )
+}
+
+export default function SatelitePage() {
+  return (
+    <DashboardLayout>
+      <SatelitePageInner />
     </DashboardLayout>
   )
 }

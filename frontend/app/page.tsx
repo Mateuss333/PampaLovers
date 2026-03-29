@@ -21,6 +21,7 @@ import {
   type DashboardMetric,
   type YieldByCrop,
 } from "@/lib/supabase-api"
+import { useFarmScope } from "@/components/farm-scope-context"
 
 const iconMap: Record<string, typeof MapPin> = {
   area: MapPin,
@@ -28,7 +29,8 @@ const iconMap: Record<string, typeof MapPin> = {
   yield: TrendingUp,
 }
 
-export default function DashboardPage() {
+function DashboardPageInner() {
+  const { selectedFarmId } = useFarmScope()
   const [metrics, setMetrics] = useState<DashboardMetric[] | null>(null)
   const [yieldData, setYieldData] = useState<YieldByCrop[] | null>(null)
   const [loading, setLoading] = useState(true)
@@ -36,9 +38,11 @@ export default function DashboardPage() {
   useEffect(() => {
     async function loadData() {
       setLoading(true)
+      const scopeOpts =
+        selectedFarmId === "all" ? undefined : { farmId: selectedFarmId }
       const [metricsData, yieldDataRes] = await Promise.all([
-        getDashboardMetrics(),
-        getYieldComparisonByCrop().catch((err) => {
+        getDashboardMetrics(scopeOpts),
+        getYieldComparisonByCrop(scopeOpts).catch((err) => {
           console.error(err)
           return [] as YieldByCrop[]
         }),
@@ -47,17 +51,18 @@ export default function DashboardPage() {
       setYieldData(yieldDataRes)
       setLoading(false)
     }
-    loadData()
-  }, [])
+    void loadData()
+  }, [selectedFarmId])
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Dashboard</h1>
           <p className="text-muted-foreground">
-            Resumen de tu operación agrícola y rendimiento por cultivo
+            {selectedFarmId === "all"
+              ? "Resumen de tu operación agrícola y rendimiento por cultivo"
+              : "Resumen del campo seleccionado en la barra superior"}
           </p>
         </div>
 
@@ -147,11 +152,13 @@ export default function DashboardPage() {
                           fontSize: 12,
                         }}
                         labelStyle={{ color: "var(--color-foreground)", fontWeight: 500 }}
-                        formatter={(value: number | undefined) =>
-                          value != null && Number.isFinite(value)
-                            ? [`${value.toFixed(2)} t/ha`, ""]
+                        formatter={(value) => {
+                          const n =
+                            typeof value === "number" ? value : Number(value)
+                          return n != null && Number.isFinite(n)
+                            ? [`${n.toFixed(2)} t/ha`, ""]
                             : ["—", ""]
-                        }
+                        }}
                       />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
                       <Bar
@@ -174,6 +181,13 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <DashboardLayout>
+      <DashboardPageInner />
     </DashboardLayout>
   )
 }
