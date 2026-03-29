@@ -1,0 +1,20 @@
+name: Trigger Supabase Edge Function every 5 days
+
+# Schedule workflow
+on:
+  schedule:
+    # Runs at 00:00 UTC every 5 days
+    - cron: "0 0 */5 * *"
+
+  # Optional: allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  trigger-edge-function:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Supabase Edge Function
+        run: |
+          curl -X POST https://vwgzzdsxvjrjeykcpean.supabase.co/functions/v1/plot-predictions-dispatcher \
+          -H "Content-Type: application/json" \
+          -d '{}'
