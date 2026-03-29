@@ -45,14 +45,12 @@ Si preferís no usar service role en Next, podés volver al flujo solo con `sign
 
 ## Eliminar cuenta (Supabase)
 
-La página **Configuración** llama a la Edge Function **`delete-account`** para borrar el usuario de Auth con `auth.admin.deleteUser` (requiere **service role** en el servidor, no en el cliente).
+La Edge Function **`delete-account`** borra el usuario de Auth con `auth.admin.deleteUser` (requiere **service role** en el servidor, no en el cliente). Podés invocarla con el cliente de Supabase (`supabase.functions.invoke`) o desde tu propia herramienta, una vez desplegada y configurada.
 
 1. Desplegá la función: `supabase functions deploy delete-account` (desde la carpeta del proyecto Supabase).
 2. Configurá el secret **`SUPABASE_SERVICE_ROLE_KEY`** para las Edge Functions (Dashboard de Supabase → Edge Functions → Secrets, o `supabase secrets set SUPABASE_SERVICE_ROLE_KEY=...`). **No** subas esa clave al repositorio.
 
-Sin el secret, la función responde error y el botón mostrará un mensaje acorde.
-
-Si ves un error genérico del estilo «Edge Function returned a non-2xx status code» o fallo de red al invocar la función, suele ser que **`delete-account` no está desplegada** en ese proyecto o que falta el secret anterior. La UI de Configuración añade una pista que remite a esta sección.
+Sin el secret o sin despliegue, la función responde error (p. ej. «Edge Function returned a non-2xx status code» o fallo de red al invocarla).
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
