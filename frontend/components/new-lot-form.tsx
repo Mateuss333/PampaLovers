@@ -70,9 +70,26 @@ const cropTypes = [
 const currentYear = new Date().getFullYear()
 const years = Array.from({ length: 10 }, (_, i) => (currentYear - 5 + i).toString())
 
-const irrigationTypes = ["Drip", "Sprinkle", "Manual", "None"] as const
-const fertilizerTypes = ["Organic", "Inorganic", "Mixed"] as const
-const cropDiseaseOptions = ["None", "Mild", "Moderate", "Severe"] as const
+/** Valores en inglés para BD/API; `label` es solo lo que ve el usuario. */
+const irrigationOptions = [
+  { value: "Drip", label: "Goteo" },
+  { value: "Sprinkle", label: "Aspersión" },
+  { value: "Manual", label: "Manual" },
+  { value: "None", label: "Sin riego" },
+] as const
+
+const fertilizerOptions = [
+  { value: "Organic", label: "Orgánico" },
+  { value: "Inorganic", label: "Inorgánico" },
+  { value: "Mixed", label: "Mixto" },
+] as const
+
+const cropDiseaseOptions = [
+  { value: "None", label: "Sin problemas" },
+  { value: "Mild", label: "Leve" },
+  { value: "Moderate", label: "Moderado" },
+  { value: "Severe", label: "Severo" },
+] as const
 const months = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
@@ -420,9 +437,9 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
                     <SelectValue placeholder="Seleccionar" />
                   </SelectTrigger>
                   <SelectContent>
-                    {irrigationTypes.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
+                    {irrigationOptions.map(({ value, label }) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -444,9 +461,9 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
                     <SelectValue placeholder="Seleccionar" />
                   </SelectTrigger>
                   <SelectContent>
-                    {fertilizerTypes.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
+                    {fertilizerOptions.map(({ value, label }) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -489,9 +506,9 @@ export function NewLotForm({ farmId, onSuccess }: NewLotFormProps) {
                     <SelectValue placeholder="Seleccionar" />
                   </SelectTrigger>
                   <SelectContent>
-                    {cropDiseaseOptions.map((opt) => (
-                      <SelectItem key={opt} value={opt}>
-                        {opt}
+                    {cropDiseaseOptions.map(({ value, label }) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
                       </SelectItem>
                     ))}
                   </SelectContent>

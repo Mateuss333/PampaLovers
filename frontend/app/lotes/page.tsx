@@ -566,26 +566,34 @@ export default function LotesPage() {
                           <div className="flex items-center justify-end gap-1">
                           {(lot.status === "Sembrado" || lot.status === "Crecimiento") && (
                             <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                              type="button"
+                              size="sm"
                               disabled={loading}
                               title="Cosechar"
+                              aria-label="Cosechar lote"
                               onClick={() => openHarvest({ id: lot.id, name: lot.name })}
+                              className="h-8 gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/15 px-2 text-amber-900 shadow-sm hover:bg-amber-500/25 dark:border-amber-500/35 dark:bg-amber-500/20 dark:text-amber-100 dark:hover:bg-amber-500/30"
                             >
-                              <Wheat className="h-4 w-4" />
+                              <Wheat className="h-4 w-4 shrink-0" />
+                              <span className="hidden text-xs font-medium sm:inline">
+                                Cosechar
+                              </span>
                             </Button>
                           )}
                           {lot.status === "Barbecho" && (
                             <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                              type="button"
+                              size="sm"
                               disabled={loading}
                               title="Nuevo ciclo"
+                              aria-label="Iniciar nuevo ciclo de siembra"
                               onClick={() => openNewCycle({ id: lot.id, name: lot.name })}
+                              className="h-8 gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/15 px-2 text-emerald-900 shadow-sm hover:bg-emerald-500/25 dark:border-emerald-500/35 dark:bg-emerald-500/20 dark:text-emerald-100 dark:hover:bg-emerald-500/30"
                             >
-                              <Sprout className="h-4 w-4" />
+                              <Sprout className="h-4 w-4 shrink-0" />
+                              <span className="hidden text-xs font-medium sm:inline">
+                                Plantar
+                              </span>
                             </Button>
                           )}
                           <DropdownMenu>
