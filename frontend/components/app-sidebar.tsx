@@ -10,12 +10,14 @@ import {
   CreditCard,
   Settings,
   Leaf,
+  History,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Mis Lotes", href: "/lotes", icon: Map },
+  { name: "Historial", href: "/historial", icon: History },
   { name: "Vista Satelital", href: "/satelite", icon: Satellite },
   { name: "Rendimientos", href: "/analytics", icon: BarChart3 },
   { name: "Uso y Plan", href: "/uso", icon: CreditCard },

@@ -113,6 +113,7 @@ export async function createEnrichedPlot(
     geoJSON,
     sowing_date: sowingDate,
     ...metricsPatch,
+    sunlight_hours: 8,
   }
 
   if (areaHa != null) row.area_ha = areaHa

@@ -7,6 +7,9 @@ import {
   getPlanLimits,
 } from "@/lib/plan-limits"
 
+/** Horas de sol por defecto hasta tener una fuente confiable. */
+const DEFAULT_SUNLIGHT_HOURS = 8
+
 /** Asegura fila en profiles: farms.user_id referencia profiles(id), no auth.users. */
 async function ensureUserProfile(supabase: SupabaseClient, user: User) {
   const { data, error: selErr } = await supabase
@@ -425,6 +428,13 @@ export interface UpdatePlotInput {
   description?: string | null
   notes?: string | null
   group?: number
+  sowing_date?: string | null
+  soil_ph?: number | null
+  irrigation_type?: string | null
+  fertilizer_type?: string | null
+  pesticide_usage_ml?: number | null
+  crop_disease_status?: string | null
+  sunlight_hours?: number | null
 }
 
 export async function updatePlot(
@@ -443,6 +453,23 @@ export async function updatePlot(
   if (updates.description !== undefined) patch.description = updates.description
   if (updates.notes !== undefined) patch.notes = updates.notes
   if (updates.group !== undefined) patch.group = updates.group
+  if (updates.sowing_date !== undefined) patch.sowing_date = updates.sowing_date
+  if (updates.soil_ph !== undefined) patch.soil_ph = updates.soil_ph
+  if (updates.irrigation_type !== undefined) {
+    patch.irrigation_type = updates.irrigation_type
+  }
+  if (updates.fertilizer_type !== undefined) {
+    patch.fertilizer_type = updates.fertilizer_type
+  }
+  if (updates.pesticide_usage_ml !== undefined) {
+    patch.pesticide_usage_ml = updates.pesticide_usage_ml
+  }
+  if (updates.crop_disease_status !== undefined) {
+    patch.crop_disease_status = updates.crop_disease_status
+  }
+  if (updates.sunlight_hours !== undefined) {
+    patch.sunlight_hours = updates.sunlight_hours
+  }
 
   if (Object.keys(patch).length === 0) {
     const row = await getPlotRow(id)
@@ -552,11 +579,13 @@ export async function createPlot(input: CreatePlotInput): Promise<DbPlot> {
     pesticide_usage_ml?: number
     crop_disease_status?: string
     sowing_date?: string
+    sunlight_hours?: number
   } = {
     farm_id: input.farm_id,
     name: input.name,
     group: input.group,
     status: input.status ?? "Sembrado",
+    sunlight_hours: DEFAULT_SUNLIGHT_HOURS,
   }
 
   if (input.crop_type) row.crop_type = input.crop_type
@@ -1172,4 +1201,249 @@ export async function getSoilMetrics(plotId: string): Promise<SoilMetric[]> {
   }
 
   return metrics
+}
+
+// ──────────────────────────────────────────────
+// LOGS (tabla public.logs — campos numéricos para ML / histórico)
+// ──────────────────────────────────────────────
+
+const LOG_CROP_CODES = [
+  "Soja",
+  "Maíz",
+  "Trigo",
+  "Girasol",
+  "Sorgo",
+  "Cebada",
+  "Arroz",
+  "Algodón",
+] as const
+
+const IRRIGATION_LOG: Record<string, number> = {
+  Drip: 1,
+  Sprinkle: 2,
+  Manual: 3,
+  None: 0,
+}
+
+const FERTILIZER_LOG: Record<string, number> = {
+  Organic: 1,
+  Inorganic: 2,
+  Mixed: 3,
+  None: 0,
+}
+
+const DISEASE_LOG: Record<string, number> = {
+  None: 0,
+  Mild: 1,
+  Moderate: 2,
+  Severe: 3,
+}
+
+function cropLabelToLogNumeric(crop: string | null | undefined): number {
+  if (!crop?.trim()) return 0
+  const i = LOG_CROP_CODES.indexOf(crop.trim() as (typeof LOG_CROP_CODES)[number])
+  return i >= 0 ? i + 1 : 0
+}
+
+function irrigationToLogNumeric(v: string | null | undefined): number {
+  if (!v?.trim()) return 0
+  return IRRIGATION_LOG[v.trim()] ?? 0
+}
+
+function fertilizerToLogNumeric(v: string | null | undefined): number {
+  if (!v?.trim()) return 0
+  return FERTILIZER_LOG[v.trim()] ?? 0
+}
+
+function diseaseToLogNumeric(v: string | null | undefined): number {
+  if (!v?.trim()) return 0
+  return DISEASE_LOG[v.trim()] ?? 0
+}
+
+/** Fila para `public.logs` al cosechar (snapshot del plot + datos ingresados). */
+function buildLogsRowFromHarvest(
+  plot: DbPlot,
+  harvestDate: string,
+  yieldKgPerHa: number,
+): Record<string, unknown> {
+  return {
+    plot_id: plot.id,
+    crop_type: cropLabelToLogNumeric(plot.crop_type),
+    soil_moisture:
+      plot.soil_moisture_percent != null ? Number(plot.soil_moisture_percent) : 0,
+    soil_ph: plot.soil_ph != null ? Number(plot.soil_ph) : 0,
+    temperature_c: plot.temperature_c != null ? Number(plot.temperature_c) : 0,
+    rainfall_mm: plot.rainfall_mm != null ? Number(plot.rainfall_mm) : 0,
+    humidity_percent:
+      plot.humidity_percent != null ? Number(plot.humidity_percent) : 0,
+    sunlight_hours: DEFAULT_SUNLIGHT_HOURS,
+    irrigation_type: irrigationToLogNumeric(plot.irrigation_type),
+    fertilizer_type: fertilizerToLogNumeric(plot.fertilizer_type),
+    pesticide_usage_ml:
+      plot.pesticide_usage_ml != null ? Number(plot.pesticide_usage_ml) : 0,
+    sowing_date: plot.sowing_date,
+    harvest_date: harvestDate,
+    yield_kg_per_hectare: yieldKgPerHa,
+    ndvi_index: plot.ndvi_index != null ? Number(plot.ndvi_index) : 0.1,
+    crop_disease_status: diseaseToLogNumeric(plot.crop_disease_status),
+  }
+}
+
+export interface StartPlotNewCycleInput {
+  crop_type: string
+  sowing_date: string
+  soil_ph?: number | null
+  irrigation_type?: string | null
+  fertilizer_type?: string | null
+  pesticide_usage_ml?: number | null
+  crop_disease_status?: string | null
+}
+
+/** Lote en Barbecho: nuevo cultivo y siembra; pasa a Sembrado. */
+export async function startPlotNewCycle(
+  plotId: string,
+  input: StartPlotNewCycleInput,
+): Promise<DbPlot> {
+  const plot = await getPlotRow(plotId)
+  if (!plot) throw new Error("Lote no encontrado")
+  if (plot.status !== "Barbecho") {
+    throw new Error(
+      "Solo podés iniciar un nuevo ciclo cuando el lote está en Barbecho",
+    )
+  }
+  const crop = input.crop_type.trim()
+  if (!crop) throw new Error("Elegí un cultivo")
+  const sd = input.sowing_date.trim()
+  if (!sd) throw new Error("La fecha de siembra es obligatoria")
+
+  const ph =
+    input.soil_ph != null && Number.isFinite(input.soil_ph)
+      ? input.soil_ph
+      : null
+  const pest =
+    input.pesticide_usage_ml != null && Number.isFinite(input.pesticide_usage_ml)
+      ? input.pesticide_usage_ml
+      : null
+
+  return updatePlot(plotId, {
+    crop_type: crop,
+    sowing_date: sd,
+    status: "Sembrado",
+    soil_ph: ph,
+    irrigation_type: input.irrigation_type?.trim() || null,
+    fertilizer_type: input.fertilizer_type?.trim() || null,
+    pesticide_usage_ml: pest,
+    crop_disease_status: input.crop_disease_status?.trim() || null,
+    sunlight_hours: DEFAULT_SUNLIGHT_HOURS,
+  })
+}
+
+// ──────────────────────────────────────────────
+// HARVEST LOGS
+// ──────────────────────────────────────────────
+
+export interface HarvestLog {
+  id: string
+  plot_id: string
+  farm_id: string
+  plot_name: string
+  crop_type: string | null
+  area_ha: number | null
+  sowing_date: string | null
+  harvest_date: string
+  yield_kg_per_hectare: number
+  soil_moisture_percent: number | null
+  soil_ph: number | null
+  temperature_c: number | null
+  rainfall_mm: number | null
+  humidity_percent: number | null
+  sunlight_hours: number | null
+  ndvi_index: number | null
+  irrigation_type: string | null
+  fertilizer_type: string | null
+  pesticide_usage_ml: number | null
+  crop_disease_status: string | null
+  notes: string | null
+  created_at: string
+}
+
+export interface HarvestPlotInput {
+  harvest_date: string
+  yield_kg_per_hectare: number
+}
+
+export async function harvestPlot(
+  plotId: string,
+  input: HarvestPlotInput,
+): Promise<DbPlot> {
+  const supabase = createClient()
+  const farmIds = await getUserFarmIds(supabase)
+  if (!farmIds || farmIds.length === 0) throw new Error("No autenticado")
+
+  const plot = await getPlotRow(plotId)
+  if (!plot) throw new Error("Lote no encontrado")
+
+  const { error: logError } = await supabase.from("harvest_logs").insert({
+    plot_id: plot.id,
+    farm_id: plot.farm_id,
+    plot_name: plot.name,
+    crop_type: plot.crop_type,
+    area_ha: plot.area_ha,
+    sowing_date: plot.sowing_date,
+    harvest_date: input.harvest_date,
+    yield_kg_per_hectare: input.yield_kg_per_hectare,
+    soil_moisture_percent: plot.soil_moisture_percent,
+    soil_ph: plot.soil_ph,
+    temperature_c: plot.temperature_c,
+    rainfall_mm: plot.rainfall_mm,
+    humidity_percent: plot.humidity_percent,
+    sunlight_hours: DEFAULT_SUNLIGHT_HOURS,
+    ndvi_index: plot.ndvi_index,
+    irrigation_type: plot.irrigation_type,
+    fertilizer_type: plot.fertilizer_type,
+    pesticide_usage_ml: plot.pesticide_usage_ml,
+    crop_disease_status: plot.crop_disease_status,
+    notes: plot.notes,
+  })
+
+  if (logError) throw new Error(logError.message)
+
+  const legacyLogRow = buildLogsRowFromHarvest(
+    plot,
+    input.harvest_date,
+    input.yield_kg_per_hectare,
+  )
+  const { error: legacyLogError } = await supabase.from("logs").insert(legacyLogRow)
+  if (legacyLogError) throw new Error(legacyLogError.message)
+
+  const { data: updated, error: updateError } = await supabase
+    .from("plots")
+    .update({
+      status: "Barbecho",
+      crop_type: null,
+      sowing_date: null,
+      sunlight_hours: DEFAULT_SUNLIGHT_HOURS,
+    })
+    .eq("id", plotId)
+    .in("farm_id", farmIds)
+    .select()
+    .single()
+
+  if (updateError) throw new Error(updateError.message)
+  return updated as DbPlot
+}
+
+export async function fetchHarvestLogs(): Promise<HarvestLog[]> {
+  const supabase = createClient()
+  const farmIds = await getUserFarmIds(supabase)
+  if (!farmIds || farmIds.length === 0) return []
+
+  const { data, error } = await supabase
+    .from("harvest_logs")
+    .select("*")
+    .in("farm_id", farmIds)
+    .order("harvest_date", { ascending: false })
+
+  if (error) throw new Error(error.message)
+  return (data ?? []) as HarvestLog[]
 }

@@ -48,13 +48,15 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Search, Filter, MoreHorizontal, Eye, Pencil, Trash2 } from "lucide-react"
+import { Search, Filter, MoreHorizontal, Eye, Pencil, Trash2, Wheat, Sprout } from "lucide-react"
 import {
   fetchLots,
   getUserFarm,
   getPlotRow,
   updatePlot,
   deletePlot,
+  harvestPlot,
+  startPlotNewCycle,
   type Lot,
   type DbPlot,
 } from "@/lib/supabase-api"
@@ -84,6 +86,29 @@ const CROP_TYPES = [
   "Arroz",
   "Algodón",
 ] as const
+
+const NEW_CYCLE_IRRIGATION = ["Drip", "Sprinkle", "Manual", "None"] as const
+const NEW_CYCLE_FERTILIZER = ["Organic", "Inorganic", "Mixed", "None"] as const
+const NEW_CYCLE_DISEASE = ["None", "Mild", "Moderate", "Severe"] as const
+
+const IRRIGATION_LABELS: Record<(typeof NEW_CYCLE_IRRIGATION)[number], string> = {
+  Drip: "Goteo",
+  Sprinkle: "Aspersión",
+  Manual: "Manual",
+  None: "Sin riego",
+}
+const FERTILIZER_LABELS: Record<(typeof NEW_CYCLE_FERTILIZER)[number], string> = {
+  Organic: "Orgánico",
+  Inorganic: "Inorgánico",
+  Mixed: "Mixto",
+  None: "Ninguno",
+}
+const DISEASE_LABELS: Record<(typeof NEW_CYCLE_DISEASE)[number], string> = {
+  None: "Sin problemas",
+  Mild: "Leve",
+  Moderate: "Moderado",
+  Severe: "Severo",
+}
 
 function TableSkeleton() {
   return (
@@ -158,6 +183,23 @@ export default function LotesPage() {
     null,
   )
   const [deleteLoading, setDeleteLoading] = useState(false)
+
+  const [harvestOpen, setHarvestOpen] = useState(false)
+  const [harvestTarget, setHarvestTarget] = useState<{ id: string; name: string } | null>(null)
+  const [harvestLoading, setHarvestLoading] = useState(false)
+  const [harvestDate, setHarvestDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [harvestYield, setHarvestYield] = useState("")
+
+  const [cycleOpen, setCycleOpen] = useState(false)
+  const [cycleTarget, setCycleTarget] = useState<{ id: string; name: string } | null>(null)
+  const [cycleLoading, setCycleLoading] = useState(false)
+  const [cycleCrop, setCycleCrop] = useState("")
+  const [cycleSowingDate, setCycleSowingDate] = useState("")
+  const [cycleSoilPh, setCycleSoilPh] = useState("")
+  const [cycleIrrigation, setCycleIrrigation] = useState<string>("None")
+  const [cycleFertilizer, setCycleFertilizer] = useState<string>("None")
+  const [cyclePesticideMl, setCyclePesticideMl] = useState("")
+  const [cycleDisease, setCycleDisease] = useState<string>("None")
 
   async function refreshLots() {
     const data = await fetchLots()
@@ -296,6 +338,105 @@ export default function LotesPage() {
     setDeleteLoading(false)
   }
 
+  function openHarvest(lot: { id: string; name: string }) {
+    setHarvestTarget(lot)
+    setHarvestDate(new Date().toISOString().slice(0, 10))
+    setHarvestYield("")
+    setHarvestOpen(true)
+  }
+
+  async function confirmHarvest() {
+    if (!harvestTarget) return
+    const parsedYield = parseFloat(harvestYield.replace(",", "."))
+    if (!Number.isFinite(parsedYield) || parsedYield < 0) {
+      toast.error("El rendimiento debe ser un número válido mayor o igual a 0")
+      return
+    }
+    if (!harvestDate) {
+      toast.error("La fecha de cosecha es obligatoria")
+      return
+    }
+    setHarvestLoading(true)
+    try {
+      await harvestPlot(harvestTarget.id, {
+        harvest_date: harvestDate,
+        yield_kg_per_hectare: parsedYield,
+      })
+      toast.success(`"${harvestTarget.name}" cosechado y registrado en historial`)
+      setHarvestOpen(false)
+      setHarvestTarget(null)
+      await refreshLots()
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Error al cosechar el lote",
+      )
+    }
+    setHarvestLoading(false)
+  }
+
+  function openNewCycle(lot: { id: string; name: string }) {
+    setCycleTarget(lot)
+    setCycleCrop("")
+    setCycleSowingDate(new Date().toISOString().slice(0, 10))
+    setCycleSoilPh("")
+    setCycleIrrigation("None")
+    setCycleFertilizer("None")
+    setCyclePesticideMl("")
+    setCycleDisease("None")
+    setCycleOpen(true)
+  }
+
+  async function confirmNewCycle() {
+    if (!cycleTarget) return
+    if (!cycleCrop.trim()) {
+      toast.error("Elegí un cultivo")
+      return
+    }
+    if (!cycleSowingDate.trim()) {
+      toast.error("La fecha de siembra es obligatoria")
+      return
+    }
+    let soilPh: number | null = null
+    if (cycleSoilPh.trim() !== "") {
+      const p = parseFloat(cycleSoilPh.replace(",", "."))
+      if (!Number.isFinite(p) || p < 0 || p > 14) {
+        toast.error("El pH debe estar entre 0 y 14")
+        return
+      }
+      soilPh = p
+    }
+    let pestMl: number | null = null
+    if (cyclePesticideMl.trim() !== "") {
+      const m = parseFloat(cyclePesticideMl.replace(",", "."))
+      if (!Number.isFinite(m) || m < 0) {
+        toast.error("El pesticida debe ser un número mayor o igual a 0")
+        return
+      }
+      pestMl = m
+    }
+    setCycleLoading(true)
+    try {
+      await startPlotNewCycle(cycleTarget.id, {
+        crop_type: cycleCrop.trim(),
+        sowing_date: cycleSowingDate.trim(),
+        soil_ph: soilPh,
+        irrigation_type: cycleIrrigation,
+        fertilizer_type: cycleFertilizer,
+        pesticide_usage_ml: pestMl,
+        crop_disease_status: cycleDisease,
+      })
+      toast.success(`Nuevo ciclo iniciado en "${cycleTarget.name}"`)
+      setCycleOpen(false)
+      setCycleTarget(null)
+      await refreshLots()
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Error al iniciar el ciclo",
+      )
+    }
+    setCycleLoading(false)
+  }
+
   const filteredLots = lots?.filter(
     (lot) =>
       lot.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -371,7 +512,7 @@ export default function LotesPage() {
                     <TableHead className="text-right font-semibold text-foreground">
                       Rend. Predicho
                     </TableHead>
-                    <TableHead className="w-[50px]" />
+                    <TableHead className="w-[88px] min-w-[88px]" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -418,6 +559,31 @@ export default function LotesPage() {
                           {lot.predictedYield ? `${lot.predictedYield.toFixed(1)} t/ha` : "—"}
                         </TableCell>
                         <TableCell>
+                          <div className="flex items-center justify-end gap-1">
+                          {(lot.status === "Sembrado" || lot.status === "Crecimiento") && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                              disabled={loading}
+                              title="Cosechar"
+                              onClick={() => openHarvest({ id: lot.id, name: lot.name })}
+                            >
+                              <Wheat className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {lot.status === "Barbecho" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                              disabled={loading}
+                              title="Nuevo ciclo"
+                              onClick={() => openNewCycle({ id: lot.id, name: lot.name })}
+                            >
+                              <Sprout className="h-4 w-4" />
+                            </Button>
+                          )}
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
@@ -456,6 +622,7 @@ export default function LotesPage() {
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
@@ -719,6 +886,226 @@ export default function LotesPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog
+          open={cycleOpen}
+          onOpenChange={(o) => {
+            if (!o) {
+              setCycleOpen(false)
+              setCycleTarget(null)
+            }
+          }}
+        >
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Nuevo ciclo de siembra</DialogTitle>
+              <DialogDescription>
+                Registrá el cultivo y la fecha de siembra para{" "}
+                <span className="font-medium text-foreground">
+                  {cycleTarget?.name ?? "el lote"}
+                </span>
+                . El lote pasará a estado Sembrado.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label>Cultivo</Label>
+                <Select
+                  value={cycleCrop || "__none__"}
+                  onValueChange={(v) => setCycleCrop(v === "__none__" ? "" : v)}
+                  disabled={cycleLoading}
+                >
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Elegir cultivo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Elegir…</SelectItem>
+                    {CROP_TYPES.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cycle-sowing">Fecha de siembra</Label>
+                <Input
+                  id="cycle-sowing"
+                  type="date"
+                  value={cycleSowingDate}
+                  onChange={(e) => setCycleSowingDate(e.target.value)}
+                  className="bg-background"
+                  disabled={cycleLoading}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cycle-ph">pH del suelo (opcional)</Label>
+                <Input
+                  id="cycle-ph"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Ej: 6.5"
+                  value={cycleSoilPh}
+                  onChange={(e) => setCycleSoilPh(e.target.value)}
+                  className="bg-background font-mono"
+                  disabled={cycleLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Riego</Label>
+                <Select
+                  value={cycleIrrigation}
+                  onValueChange={setCycleIrrigation}
+                  disabled={cycleLoading}
+                >
+                  <SelectTrigger className="bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NEW_CYCLE_IRRIGATION.map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {IRRIGATION_LABELS[v]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Fertilizante</Label>
+                <Select
+                  value={cycleFertilizer}
+                  onValueChange={setCycleFertilizer}
+                  disabled={cycleLoading}
+                >
+                  <SelectTrigger className="bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NEW_CYCLE_FERTILIZER.map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {FERTILIZER_LABELS[v]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cycle-pest">Pesticida (ml, opcional)</Label>
+                <Input
+                  id="cycle-pest"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={cyclePesticideMl}
+                  onChange={(e) => setCyclePesticideMl(e.target.value)}
+                  className="bg-background font-mono"
+                  disabled={cycleLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Estado sanitario del cultivo</Label>
+                <Select
+                  value={cycleDisease}
+                  onValueChange={setCycleDisease}
+                  disabled={cycleLoading}
+                >
+                  <SelectTrigger className="bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NEW_CYCLE_DISEASE.map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {DISEASE_LABELS[v]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setCycleOpen(false)
+                  setCycleTarget(null)
+                }}
+                disabled={cycleLoading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => void confirmNewCycle()}
+                disabled={cycleLoading}
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                {cycleLoading ? "Guardando…" : "Iniciar ciclo"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={harvestOpen} onOpenChange={(o) => { if (!o) { setHarvestOpen(false); setHarvestTarget(null) } }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Cosechar lote</DialogTitle>
+              <DialogDescription>
+                Registrá la cosecha de{" "}
+                <span className="font-medium text-foreground">
+                  {harvestTarget?.name ?? "el lote"}
+                </span>
+                . El lote pasará a estado Barbecho y quedará listo para un nuevo ciclo.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="harvest-date">Fecha de cosecha</Label>
+                <Input
+                  id="harvest-date"
+                  type="date"
+                  value={harvestDate}
+                  onChange={(e) => setHarvestDate(e.target.value)}
+                  className="bg-background"
+                  disabled={harvestLoading}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="harvest-yield">Rendimiento (kg/ha)</Label>
+                <Input
+                  id="harvest-yield"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Ej: 3500"
+                  value={harvestYield}
+                  onChange={(e) => setHarvestYield(e.target.value)}
+                  className="bg-background font-mono"
+                  disabled={harvestLoading}
+                  required
+                />
+              </div>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => { setHarvestOpen(false); setHarvestTarget(null) }}
+                disabled={harvestLoading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => void confirmHarvest()}
+                disabled={harvestLoading}
+                className="bg-amber-600 text-white hover:bg-amber-700"
+              >
+                {harvestLoading ? "Cosechando…" : "Confirmar cosecha"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )
