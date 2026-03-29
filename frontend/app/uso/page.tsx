@@ -32,6 +32,11 @@ import {
 
 const PLAN_ORDER: UserPlan[] = ["free", "premium", "pro"]
 
+const PLAN_AUDIENCE_SUBTITLE: Partial<Record<UserPlan, string>> = {
+  premium: "Orientado a terratenientes",
+  pro: "Pensado para aseguradoras",
+}
+
 const PLAN_FEATURES: Record<UserPlan, string[]> = {
   free: [
     "Hasta 5 lotes",
@@ -231,6 +236,11 @@ export default function UsoPage() {
                       </div>
                       {isActive && <Badge variant="default">Plan Actual</Badge>}
                     </div>
+                    {PLAN_AUDIENCE_SUBTITLE[tier] ? (
+                      <p className="text-sm text-muted-foreground">
+                        {PLAN_AUDIENCE_SUBTITLE[tier]}
+                      </p>
+                    ) : null}
                     <p className="text-2xl font-bold text-foreground">
                       {tierLimits.priceUsd === 0 ? (
                         "Gratis"

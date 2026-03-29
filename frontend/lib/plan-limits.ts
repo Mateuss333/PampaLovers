@@ -31,7 +31,7 @@ export const PLAN_LIMITS: Record<UserPlan, PlanLimits> = {
     maxPlots: Infinity,
     maxFarms: 100,
     maxHectares: 500_000,
-    priceUsd: 50,
+    priceUsd: 200,
   },
 }
 
