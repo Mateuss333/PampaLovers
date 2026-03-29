@@ -1,35 +1,68 @@
-# PampaLovers
+# EvoAgro
 
-Proyecto Pampa Lovers — HackITBA 2026.
+MVP EvoAgro — HackITBA 2026.
 
-## Backend
+A continuacion, se detalla como ejecutar localmente el proyecto.
 
-Instalar dependencias (desde la raíz del repositorio):
+## Frontend
+
+Primero, se debe contar con `NodeJS` para poder utilizar el comando `npm`. 
+Luego, dentro de la carpeta `frontend/` instalar dependencias:
 
 ```bash
 npm install
 ```
 
-Levantar el servidor:
+### Variables de entorno
+
+Se debe contar con un archivo `.env.local` con las variables de entorno requeridas, estas son:
+
+- SUPABASE_SERVICE_ROLE_KEY(Desde el panel de Supabase)
+- EOS_API_KEY(Desde el panel de EOSDA API)
+- NEXT_PUBLIC_SUPABASE_URL(Desde el panel de Supabase)
+- NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY(Desde el panel de Supabase)
+
+Se deben completar con los valores obtenidos de las distintas herramientas. Por ejemplo:
+
+```
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_XXXXXXXXXXXXXXXXXX
+EOS_API_KEY=apk.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+NEXT_PUBLIC_SUPABASE_URL=https://XXXXXXXXX.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=sb_publishable_XXXXXXXXXXXXXXXXXXXXxxX
+```
+
+--- 
+
+Finalmente, levantar el servidor:
 
 ```bash
-cd backend && node index.js
+npm run dev
+```
+
+Por defecto escucha en `http://localhost:3000`.
+
+## Backend
+
+Debido a que no es posible integrar las liberias de TensorFlow con Supabase, se requiere levantar una API, 
+hecha con **FastAPI**. Primero, se debe contar con `Python3` para utilizar el comando `pip`, luego en el directorio 
+`backend/` se deben instalar las dependencias requeridas:
+
+```
+pip install -r requirements.txt
+```
+
+Luego, correr con:
+
+```
+fastapi run main.py
 ```
 
 Por defecto escucha en `http://localhost:8000`.
 
-### Variables de entorno
+> **Nota**: En caso de correr la API localmente, se debera cambiar la URL utilizada en las **Edge Functions** 
+de Supabase por `http://localhost:8000`.
 
-Copiar `backend/.env.example` a `backend/.env` y completar con los valores del panel de Supabase (**Settings → API**).
+## Supabase
 
-### Supabase y RLS
-
-Si un `select` devuelve filas vacías pero en el Table Editor hay datos, revisar **políticas RLS** para el rol que usa tu clave (`anon` vs `service_role`). La clave `service_role` solo debe usarse en el servidor, nunca en el cliente.
-
-La tabla `plot_prediction` enlaza cada lote (`plot_id`) con `ml_predicted_kg_ha` (predicción ML en kg/ha). Las migraciones `202603280003_create_plot_prediction.sql` y `202603281012_plot_prediction_ml_kg_ha.sql` crean o alinean esa columna; la pestaña Lotes y el rendimiento por cultivo leen ese valor (el agregado convierte a t/ha para mezclar con histórico).
-
-El mapa satelital guarda el contorno en la columna `polygon` de `plots` (`supabase/migrations/202603280005_add_plots_polygon.sql`). Hay que aplicar esa migración en el proyecto de Supabase para que los nuevos lotes persistan el polígono real.
-
-### Smoke test
-
-`GET /api/test` consulta la tabla `usuarios`; cambiar el nombre en código cuando definan el esquema real.
+Hay muchas cosas que quedaron en Supabase, cualquier duda hacerla de lo implementado en dicha plataforma contactar a los participantes del 
+equipo.
