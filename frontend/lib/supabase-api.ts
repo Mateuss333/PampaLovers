@@ -172,6 +172,13 @@ export interface SoilMetric {
   trend: string
 }
 
+export interface PlotPredictionHistoryPoint {
+  id: string
+  plotId: string
+  createdAt: string
+  predictedKgHa: number
+}
+
 // ──────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────
@@ -339,18 +346,52 @@ async function fetchMlPredictedKgHaByPlotIds(
 
   const { data, error } = await supabase
     .from("plot_prediction")
-    .select("plot_id, ml_predicted_kg_ha")
+    .select("plot_id, ml_predicted_kg_ha, created_at")
     .in("plot_id", plotIds)
+    .order("created_at", { ascending: false })
 
   if (error) throw error
   for (const row of data ?? []) {
     const id = (row as { plot_id: string }).plot_id
+    if (map.has(id)) continue
     const kg = parseMlPredictedKgHa(
       (row as { ml_predicted_kg_ha: unknown }).ml_predicted_kg_ha,
     )
     map.set(id, kg)
   }
   return map
+}
+
+export async function getPlotPredictionHistory(
+  plotId: string,
+): Promise<PlotPredictionHistoryPoint[]> {
+  if (!plotId) return []
+
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from("plot_prediction")
+    .select("id, plot_id, ml_predicted_kg_ha, created_at")
+    .eq("plot_id", plotId)
+    .order("created_at", { ascending: true })
+
+  if (error) throw new Error(error.message)
+
+  const history: PlotPredictionHistoryPoint[] = []
+  for (const row of data ?? []) {
+    const predictedKgHa = parseMlPredictedKgHa(
+      (row as { ml_predicted_kg_ha: unknown }).ml_predicted_kg_ha,
+    )
+    if (predictedKgHa == null) continue
+
+    history.push({
+      id: String((row as { id: string }).id),
+      plotId: String((row as { plot_id: string }).plot_id),
+      createdAt: String((row as { created_at: string }).created_at),
+      predictedKgHa,
+    })
+  }
+
+  return history
 }
 
 function sortCropLabels(crops: string[]): string[] {
