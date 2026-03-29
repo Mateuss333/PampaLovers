@@ -47,14 +47,14 @@ const PLAN_FEATURES: Record<UserPlan, string[]> = {
   premium: [
     "Hasta 30 lotes",
     "Hasta 5 granjas",
-    "Hasta 10.000 hectáreas totales",
+    "Hasta 3.000 hectáreas totales",
     "Vista satelital avanzada",
     "Predicciones ML",
   ],
   pro: [
     "Lotes ilimitados",
-    "Hasta 100 granjas",
-    "Hasta 500.000 hectáreas totales",
+    "Hasta 30 granjas",
+    "Hasta 20.000 hectáreas totales",
     "Vista satelital avanzada",
     "Predicciones ML prioritarias",
     "Soporte dedicado",

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/select"
 import { Plus, MapPin, Calendar, Wheat, Loader2, FlaskConical } from "lucide-react"
 import { createPlotWithEnrichment } from "@/lib/supabase-api"
-import { polygonAreaHectares } from "@/lib/polygon-area"
 import {
   LotPolygonMapPicker,
   type LngLatTuple,
@@ -45,7 +44,6 @@ export interface NewLotFormData {
   group: string
   cropType: string
   sowingDate: string
-  areaHa: string
   polygonPoints: LngLatTuple[]
   soilPh: string
   irrigationType: string
@@ -112,7 +110,6 @@ function emptyForm(): NewLotFormData {
     group: "",
     cropType: "",
     sowingDate: "",
-    areaHa: "",
     polygonPoints: [],
     soilPh: "",
     irrigationType: "",
@@ -138,21 +135,6 @@ export function NewLotForm({
   const [error, setError] = useState<string | null>(null)
   const [formData, setFormData] = useState<NewLotFormData>(emptyForm)
   const latestAllowedSowingDate = getLatestAllowedSowingDate()
-
-  useEffect(() => {
-    setFormData((prev) => {
-      const pts = prev.polygonPoints
-      if (pts.length !== 4) {
-        return prev.areaHa === "" ? prev : { ...prev, areaHa: "" }
-      }
-      const ha = polygonAreaHectares(pts)
-      if (!Number.isFinite(ha) || ha <= 0) {
-        return prev.areaHa === "" ? prev : { ...prev, areaHa: "" }
-      }
-      const next = ha.toFixed(2)
-      return prev.areaHa === next ? prev : { ...prev, areaHa: next }
-    })
-  }, [formData.polygonPoints])
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next)
@@ -382,29 +364,6 @@ export function NewLotForm({
                 />
                 <p id="sowingDate-help" className="text-xs text-muted-foreground">
                   Solo se permiten fechas hasta el {formatDisplayDate(latestAllowedSowingDate)}.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="areaHa" className="text-foreground">
-                  Superficie (hectáreas)
-                </Label>
-                <Input
-                  id="areaHa"
-                  readOnly
-                  tabIndex={-1}
-                  placeholder="Marcá 4 puntos en el mapa"
-                  value={formData.areaHa}
-                  className="bg-muted/50 font-mono text-foreground cursor-default"
-                  disabled={submitting}
-                  aria-readonly="true"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Se calcula sola a partir del contorno en el mapa.
                 </p>
               </div>
             </div>
