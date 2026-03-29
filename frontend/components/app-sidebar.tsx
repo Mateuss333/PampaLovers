@@ -34,7 +34,7 @@ export function AppSidebar() {
         <div className="flex h-9 w-9 items-center justify-center rounded-md bg-sidebar-primary">
           <Leaf className="h-5 w-5 text-sidebar-primary-foreground" />
         </div>
-        <span className="text-lg font-semibold tracking-tight">AgroSmart</span>
+        <span className="text-lg font-semibold tracking-tight">EvoAgro</span>
       </div>
 
       {/* Navigation */}
