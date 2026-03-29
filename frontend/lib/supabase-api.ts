@@ -146,16 +146,7 @@ export interface FarmSettings {
   currency: string
 }
 
-export interface DashboardMetric {
-  id: string
-  title: string
-  value: string
-  unit: string
-  change: string
-  changeType: "positive" | "negative" | "neutral"
-}
-
-/** Rendimiento agregado por cultivo para el dashboard (t/ha). */
+/** Rendimiento agregado por cultivo (t/ha), p. ej. vista Rendimientos. */
 export interface YieldByCrop {
   crop: string
   actual: number | null
@@ -170,6 +161,13 @@ export interface SoilMetric {
   status: "Óptimo" | "Normal" | "Alto" | "Ideal" | "Moderado" | "Bajo"
   description: string
   trend: string
+}
+
+export interface PlotPredictionHistoryPoint {
+  id: string
+  plotId: string
+  createdAt: string
+  predictedKgHa: number
 }
 
 // ──────────────────────────────────────────────
@@ -339,18 +337,52 @@ async function fetchMlPredictedKgHaByPlotIds(
 
   const { data, error } = await supabase
     .from("plot_prediction")
-    .select("plot_id, ml_predicted_kg_ha")
+    .select("plot_id, ml_predicted_kg_ha, created_at")
     .in("plot_id", plotIds)
+    .order("created_at", { ascending: false })
 
   if (error) throw error
   for (const row of data ?? []) {
     const id = (row as { plot_id: string }).plot_id
+    if (map.has(id)) continue
     const kg = parseMlPredictedKgHa(
       (row as { ml_predicted_kg_ha: unknown }).ml_predicted_kg_ha,
     )
     map.set(id, kg)
   }
   return map
+}
+
+export async function getPlotPredictionHistory(
+  plotId: string,
+): Promise<PlotPredictionHistoryPoint[]> {
+  if (!plotId) return []
+
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from("plot_prediction")
+    .select("id, plot_id, ml_predicted_kg_ha, created_at")
+    .eq("plot_id", plotId)
+    .order("created_at", { ascending: true })
+
+  if (error) throw new Error(error.message)
+
+  const history: PlotPredictionHistoryPoint[] = []
+  for (const row of data ?? []) {
+    const predictedKgHa = parseMlPredictedKgHa(
+      (row as { ml_predicted_kg_ha: unknown }).ml_predicted_kg_ha,
+    )
+    if (predictedKgHa == null) continue
+
+    history.push({
+      id: String((row as { id: string }).id),
+      plotId: String((row as { plot_id: string }).plot_id),
+      createdAt: String((row as { created_at: string }).created_at),
+      predictedKgHa,
+    })
+  }
+
+  return history
 }
 
 function sortCropLabels(crops: string[]): string[] {
@@ -932,15 +964,33 @@ export async function getFarmById(farmId: string): Promise<DbFarm | null> {
   return data as DbFarm
 }
 
+/** Suma `plots.area_ha` del campo (hectáreas), redondeada a 2 decimales. */
+async function sumPlotAreaHaForFarm(farmId: string): Promise<number> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from("plots")
+    .select("area_ha")
+    .eq("farm_id", farmId)
+
+  if (error) throw new Error(error.message)
+
+  const raw = (data ?? []).reduce(
+    (sum, p) => sum + (Number(p.area_ha) || 0),
+    0,
+  )
+  return Math.round(raw * 100) / 100
+}
+
 export async function getFarmSettingsForFarm(
   farmId: string,
 ): Promise<FarmSettings | null> {
   const farm = await getFarmById(farmId)
   if (!farm) return null
+  const size = await sumPlotAreaHaForFarm(farmId)
   return {
     id: farm.id,
     name: farm.name,
-    size: Number(farm.size_ha) || 0,
+    size,
     location: farm.location_name ?? "",
     timezone: farm.timezone ?? "america-buenos-aires",
     currency: farm.currency ?? "ars",
@@ -969,10 +1019,11 @@ export async function getUserFarm(): Promise<DbFarm | null> {
 export async function getFarmSettings(): Promise<FarmSettings | null> {
   const farm = await getUserFarm()
   if (!farm) return null
+  const size = await sumPlotAreaHaForFarm(farm.id)
   return {
     id: farm.id,
     name: farm.name,
-    size: Number(farm.size_ha) || 0,
+    size,
     location: farm.location_name ?? "",
     timezone: farm.timezone ?? "america-buenos-aires",
     currency: farm.currency ?? "ars",
@@ -1144,63 +1195,6 @@ export async function getYieldComparisonByCrop(
       prediction: acc.predDen > 0 ? acc.predNum / acc.predDen : null,
     }
   })
-}
-
-// ──────────────────────────────────────────────
-// DASHBOARD METRICS (computed from plots)
-// ──────────────────────────────────────────────
-
-export async function getDashboardMetrics(
-  options?: FarmScopeOptions,
-): Promise<DashboardMetric[]> {
-  const supabase = createClient()
-  const farmIds = await getFarmIdsForScope(supabase, options?.farmId)
-  const empty: DashboardMetric[] = [
-    { id: "area", title: "Área Total", value: "0", unit: "hectáreas", change: "—", changeType: "neutral" },
-    { id: "lots", title: "Lotes Activos", value: "0", unit: "lotes", change: "—", changeType: "neutral" },
-    { id: "yield", title: "NDVI Promedio", value: "0.00", unit: "", change: "—", changeType: "neutral" },
-  ]
-
-  if (farmIds.length === 0) return empty
-
-  const { data: plots, error } = await supabase
-    .from("plots")
-    .select("area_ha, ndvi_index")
-    .in("farm_id", farmIds)
-
-  if (error || !plots || plots.length === 0) return empty
-
-  const totalArea = plots.reduce((sum, p) => sum + (Number(p.area_ha) || 0), 0)
-  const lotCount = plots.length
-  const avgNdvi =
-    plots.reduce((sum, p) => sum + (Number(p.ndvi_index) || 0), 0) / lotCount
-
-  return [
-    {
-      id: "area",
-      title: "Área Total",
-      value: totalArea.toLocaleString("es-AR", { maximumFractionDigits: 0 }),
-      unit: "hectáreas",
-      change: "—",
-      changeType: "neutral",
-    },
-    {
-      id: "lots",
-      title: "Lotes Activos",
-      value: String(lotCount),
-      unit: "lotes",
-      change: "—",
-      changeType: "neutral",
-    },
-    {
-      id: "yield",
-      title: "NDVI Promedio",
-      value: avgNdvi.toFixed(2),
-      unit: "",
-      change: "—",
-      changeType: "neutral",
-    },
-  ]
 }
 
 // ──────────────────────────────────────────────

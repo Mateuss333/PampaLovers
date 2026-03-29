@@ -21,7 +21,6 @@ export default function OnboardingPage() {
   const [name, setName] = useState("")
   const [location, setLocation] = useState("")
   const [description, setDescription] = useState("")
-  const [sizeHa, setSizeHa] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -40,9 +39,8 @@ export default function OnboardingPage() {
         name: name.trim(),
         location_name: location.trim() || undefined,
         description: description.trim() || undefined,
-        size_ha: sizeHa ? parseFloat(sizeHa) : undefined,
       })
-      router.push("/")
+      router.push("/lotes")
       router.refresh()
     } catch (err) {
       const msg =
@@ -114,21 +112,6 @@ export default function OnboardingPage() {
                     disabled={loading}
                   />
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="sizeHa">Superficie Total (hectáreas)</Label>
-                <Input
-                  id="sizeHa"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="ej: 1250"
-                  value={sizeHa}
-                  onChange={(e) => setSizeHa(e.target.value)}
-                  className="font-mono"
-                  disabled={loading}
-                />
               </div>
 
               <div className="space-y-2">

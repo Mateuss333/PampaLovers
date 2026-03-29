@@ -157,7 +157,11 @@ function formatDateTime(iso: string) {
 }
 
 function LotesPageInner() {
-  const { selectedFarmId } = useFarmScope()
+  const {
+    farms,
+    loading: farmsLoading,
+    selectedFarmId,
+  } = useFarmScope()
   const [lots, setLots] = useState<Lot[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -445,8 +449,13 @@ function LotesPageInner() {
       lot.crop.toLowerCase().includes(searchQuery.toLowerCase()),
   )
 
-  const newLotFarmId =
-    selectedFarmId === "all" ? null : selectedFarmId
+  const selectedFarm = farms.find((farm) => farm.id === selectedFarmId) ?? null
+  const newLotFarmId = selectedFarm?.id ?? null
+  const newLotDisabledReason = farmsLoading
+    ? "Estamos cargando tus granjas. En un momento vas a poder crear un lote."
+    : farms.length === 0
+      ? "Todavía no tenés ninguna granja creada. Crea una desde el selector superior para habilitar Nuevo Lote."
+      : "Selecciona una granja en el selector superior para habilitar Nuevo Lote."
 
   return (
     <div className="space-y-6">
@@ -461,7 +470,11 @@ function LotesPageInner() {
                 : "Lotes del campo seleccionado en la barra superior"}
             </p>
           </div>
-          <NewLotForm farmId={newLotFarmId} onSuccess={refreshLots} />
+          <NewLotForm
+            farmId={newLotFarmId}
+            disabledReason={newLotFarmId ? null : newLotDisabledReason}
+            onSuccess={refreshLots}
+          />
         </div>
 
         <Card className="border-border/60">

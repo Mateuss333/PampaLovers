@@ -71,13 +71,12 @@ export async function createEnrichedPlot(
     requestedStatus && PLOT_STATUSES.has(requestedStatus) ? requestedStatus : "Sembrado"
 
   const computedArea = polygonAreaHectares(polygon)
-  const requestedArea = normalizePositiveNumber(body.area_ha)
-  const areaHa =
-    requestedArea != null
-      ? requestedArea
-      : Number.isFinite(computedArea) && computedArea > 0
-        ? Number(computedArea.toFixed(2))
-        : null
+  if (!Number.isFinite(computedArea) || computedArea <= 0) {
+    throw new Error(
+      "No se pudo calcular la superficie del poligono. Verificá los cuatro puntos en el mapa.",
+    )
+  }
+  const areaHa = Number(computedArea.toFixed(2))
 
   await ensureUserProfile(supabase, user)
   await checkPlotCreationLimit(supabase, user.id, areaHa)
@@ -116,7 +115,7 @@ export async function createEnrichedPlot(
     sunlight_hours: 8,
   }
 
-  if (areaHa != null) row.area_ha = areaHa
+  row.area_ha = areaHa
 
   const cropType = normalizeString(body.crop_type)
   if (cropType) row.crop_type = cropType
@@ -297,11 +296,6 @@ function normalizeNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null
   }
   return null
-}
-
-function normalizePositiveNumber(value: unknown): number | null {
-  const parsed = normalizeNumber(value)
-  return parsed != null && parsed > 0 ? parsed : null
 }
 
 function roundGeographicCoord(value: number, decimals: number): number {

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
+import { useFarmScope } from "@/components/farm-scope-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -11,524 +12,453 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ChartCardSkeleton } from "@/components/skeleton-card"
 import {
-  LineChart,
+  CartesianGrid,
+  LabelList,
   Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  Area,
-  AreaChart,
 } from "recharts"
-import { TrendingUp, Droplets, FlaskConical, Thermometer, Cpu } from "lucide-react"
-import {
-  getHistoricalYields,
-  getNDVITrend,
-  type HistoricalYield,
-  type NDVITrend,
-} from "@/lib/api"
 import {
   fetchLots,
-  getSoilMetrics,
+  getPlotPredictionHistory,
   type Lot,
-  type SoilMetric,
+  type PlotPredictionHistoryPoint,
 } from "@/lib/supabase-api"
-import { useFarmScope } from "@/components/farm-scope-context"
 
-const statusColors: Record<string, string> = {
-  "Óptimo": "bg-primary/10 text-primary border-primary/20",
-  "Normal": "bg-chart-5/10 text-chart-5 border-chart-5/20",
-  "Alto": "bg-accent/20 text-accent border-accent/30",
-  "Ideal": "bg-primary/10 text-primary border-primary/20",
-  "Moderado": "bg-chart-4/10 text-chart-4 border-chart-4/20",
-  "Bajo": "bg-destructive/10 text-destructive border-destructive/20",
+type FarmOption = {
+  id: string
+  name: string
 }
 
-const iconMap: Record<string, typeof FlaskConical> = {
-  ph: FlaskConical,
-  moisture: Droplets,
-  nitrogen: FlaskConical,
-  temp: Thermometer,
-  phosphorus: FlaskConical,
-  potassium: FlaskConical,
+type PredictionChartPoint = PlotPredictionHistoryPoint & {
+  changeLabel: string | null
+}
+
+function buildFarmOptions(lots: Lot[]): FarmOption[] {
+  const farmsById = new Map<string, FarmOption>()
+
+  for (const lot of lots) {
+    if (!farmsById.has(lot.farmId)) {
+      farmsById.set(lot.farmId, {
+        id: lot.farmId,
+        name: lot.farmName || "Granja sin nombre",
+      })
+    }
+  }
+
+  return [...farmsById.values()].sort((a, b) => a.name.localeCompare(b.name, "es"))
+}
+
+function buildLotsForFarm(lots: Lot[], farmId: string): Lot[] {
+  return lots
+    .filter((lot) => lot.farmId === farmId)
+    .sort((a, b) => a.name.localeCompare(b.name, "es"))
+}
+
+function formatAxisDate(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  return date.toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "short",
+  })
+}
+
+function formatTooltipDate(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  return date.toLocaleString("es-AR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  })
+}
+
+function formatKgHa(value: number): string {
+  return `${Math.round(value).toLocaleString("es-AR")} kg/ha`
+}
+
+function normalizeChartNumber(value: number | string | Array<number | string>): number {
+  if (Array.isArray(value)) {
+    return Number(value[0] ?? 0)
+  }
+
+  return Number(value)
+}
+
+function formatAxisKgHa(value: number | string): string {
+  return Math.round(Number(value)).toLocaleString("es-AR")
+}
+
+function formatChangePercent(value: number): string {
+  const sign = value > 0 ? "+" : ""
+  return `${sign}${value.toFixed(1)}%`
+}
+
+function buildPredictionChartData(
+  history: PlotPredictionHistoryPoint[],
+): PredictionChartPoint[] {
+  return history.map((point, index) => {
+    if (index === 0) {
+      return { ...point, changeLabel: null }
+    }
+
+    const previousValue = history[index - 1]?.predictedKgHa ?? null
+    if (previousValue == null || previousValue <= 0) {
+      return { ...point, changeLabel: null }
+    }
+
+    const deltaPercent =
+      ((point.predictedKgHa - previousValue) / previousValue) * 100
+
+    return {
+      ...point,
+      changeLabel: formatChangePercent(deltaPercent),
+    }
+  })
 }
 
 function AnalyticsPageInner() {
-  const { selectedFarmId } = useFarmScope()
-  const [selectedCrop, setSelectedCrop] = useState("all")
+  const { selectedFarmId: scopedFarmId } = useFarmScope()
   const [lots, setLots] = useState<Lot[]>([])
-  const [selectedLot, setSelectedLot] = useState<string | null>(null)
-  const [historicalYields, setHistoricalYields] = useState<HistoricalYield[] | null>(null)
-  const [soilMetrics, setSoilMetrics] = useState<SoilMetric[] | null>(null)
-  const [ndviTrend, setNDVITrend] = useState<NDVITrend[] | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [selectedFarmId, setSelectedFarmId] = useState("")
+  const [selectedLotId, setSelectedLotId] = useState("")
+  const [history, setHistory] = useState<PlotPredictionHistoryPoint[] | null>(null)
+  const [loadingLots, setLoadingLots] = useState(true)
+  const [loadingHistory, setLoadingHistory] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const farms = buildFarmOptions(lots)
+  const lotsForSelectedFarm = selectedFarmId ? buildLotsForFarm(lots, selectedFarmId) : []
+  const selectedLot = lots.find((lot) => lot.id === selectedLotId) ?? null
+  const chartData = history ? buildPredictionChartData(history) : []
 
   useEffect(() => {
-    async function loadData() {
-      setLoading(true)
+    let active = true
+
+    async function loadLots() {
+      setLoadingLots(true)
+      setError(null)
+
       try {
         const lotsData = await fetchLots(
-          selectedFarmId === "all"
-            ? undefined
-            : { farmId: selectedFarmId },
+          scopedFarmId === "all" ? undefined : { farmId: scopedFarmId },
         )
-        const [yieldsData, ndviData] = await Promise.all([
-          getHistoricalYields(),
-          getNDVITrend(),
-        ])
-        setHistoricalYields(yieldsData)
-        setNDVITrend(ndviData)
+        if (!active) return
         setLots(lotsData)
-        setSelectedLot((prev) => {
-          if (prev && lotsData.some((l) => l.id === prev)) return prev
-          return lotsData.length > 0 ? lotsData[0].id : null
-        })
       } catch (err) {
-        console.error("Error loading analytics:", err)
+        console.error("Error loading lots for analytics:", err)
+        if (!active) return
+        setLots([])
+        setError("No pudimos cargar granjas y lotes desde Supabase.")
+      } finally {
+        if (active) setLoadingLots(false)
       }
-      setLoading(false)
     }
-    void loadData()
-  }, [selectedFarmId])
+
+    void loadLots()
+
+    return () => {
+      active = false
+    }
+  }, [scopedFarmId])
 
   useEffect(() => {
-    if (!selectedLot) return
-    async function loadSoil() {
-      const soilData = await getSoilMetrics(selectedLot!)
-      setSoilMetrics(soilData)
+    if (farms.length === 0) {
+      if (selectedFarmId) setSelectedFarmId("")
+      return
     }
-    loadSoil()
-  }, [selectedLot])
+
+    if (scopedFarmId !== "all") {
+      const scopedExists = farms.some((farm) => farm.id === scopedFarmId)
+      if (scopedExists && selectedFarmId !== scopedFarmId) {
+        setSelectedFarmId(scopedFarmId)
+        return
+      }
+    }
+
+    const farmExists = farms.some((farm) => farm.id === selectedFarmId)
+    if (!farmExists) {
+      setSelectedFarmId(farms[0].id)
+    }
+  }, [farms, scopedFarmId, selectedFarmId])
+
+  useEffect(() => {
+    if (!selectedFarmId) {
+      if (selectedLotId) setSelectedLotId("")
+      return
+    }
+
+    const lotExists = lotsForSelectedFarm.some((lot) => lot.id === selectedLotId)
+    if (!lotExists) {
+      setSelectedLotId(lotsForSelectedFarm[0]?.id ?? "")
+    }
+  }, [lotsForSelectedFarm, selectedFarmId, selectedLotId])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadHistory() {
+      if (!selectedLotId) {
+        setHistory([])
+        setLoadingHistory(false)
+        return
+      }
+
+      setLoadingHistory(true)
+      setHistory(null)
+      setError(null)
+
+      try {
+        const historyData = await getPlotPredictionHistory(selectedLotId)
+        if (!active) return
+        setHistory(historyData)
+      } catch (err) {
+        console.error("Error loading prediction history:", err)
+        if (!active) return
+        setHistory([])
+        setError("No pudimos cargar las estimaciones guardadas para este lote.")
+      } finally {
+        if (active) setLoadingHistory(false)
+      }
+    }
+
+    void loadHistory()
+
+    return () => {
+      active = false
+    }
+  }, [selectedLotId])
+
+  const showEmptyLots = !loadingLots && farms.length === 0
+  const showEmptyHistory =
+    !loadingLots &&
+    !loadingHistory &&
+    selectedLot != null &&
+    Array.isArray(history) &&
+    history.length === 0 &&
+    !error
 
   return (
     <div className="space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            Rendimientos e Info del Campo
-          </h1>
-          <p className="text-muted-foreground">
-            {selectedFarmId === "all"
-              ? "Análisis histórico y predicciones basadas en Machine Learning"
-              : "Lotes del campo seleccionado en la barra superior; gráficos globales siguen siendo ilustrativos."}
-          </p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          Rendimientos
+        </h1>
+        <p className="text-muted-foreground">
+          Historial de estimaciones guardadas en Supabase por granja y lote.
+        </p>
+      </div>
 
-        <Tabs defaultValue="yields" className="space-y-6">
-          <TabsList className="bg-muted/60">
-            <TabsTrigger value="yields">Rendimientos Históricos</TabsTrigger>
-            <TabsTrigger value="soil">Información del Suelo</TabsTrigger>
-            <TabsTrigger value="predictions">Predicciones ML</TabsTrigger>
-          </TabsList>
+      <Card className="border-border/60">
+        <CardHeader className="space-y-4">
+          <div>
+            <CardTitle className="text-foreground">
+              Estimaciones a lo largo del tiempo
+            </CardTitle>
+            <CardDescription>
+              Elegi una granja y despues un lote para ver los registros de
+              `plot_prediction` ordenados por `created_at`.
+            </CardDescription>
+          </div>
 
-          {/* YIELDS TAB */}
-          <TabsContent value="yields" className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Select value={selectedCrop} onValueChange={setSelectedCrop}>
-                  <SelectTrigger className="w-[160px] bg-card">
-                    <SelectValue placeholder="Cultivo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los cultivos</SelectItem>
-                    <SelectItem value="soja">Soja</SelectItem>
-                    <SelectItem value="maiz">Maíz</SelectItem>
-                    <SelectItem value="trigo">Trigo</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select defaultValue="5y">
-                  <SelectTrigger className="w-[140px] bg-card">
-                    <SelectValue placeholder="Período" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="3y">Últimos 3 años</SelectItem>
-                    <SelectItem value="5y">Últimos 5 años</SelectItem>
-                    <SelectItem value="10y">Últimos 10 años</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Badge variant="outline" className="gap-1.5 border-accent/30 text-accent">
-                <Cpu className="h-3 w-3" />
-                Predicción 2026 incluida
-              </Badge>
-            </div>
-
-            {loading || !historicalYields ? (
-              <ChartCardSkeleton />
-            ) : (
-              <Card className="border-border/60">
-                <CardHeader>
-                  <CardTitle className="text-foreground">Tendencia de Rendimientos</CardTitle>
-                  <CardDescription>
-                    Rendimiento histórico por cultivo en toneladas/hectárea
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={400}>
-                    <LineChart data={historicalYields}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                      <XAxis
-                        dataKey="year"
-                        tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <YAxis
-                        tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }}
-                        tickLine={false}
-                        axisLine={false}
-                        tickFormatter={(value) => `${value} t/ha`}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "var(--color-card)",
-                          border: "1px solid var(--color-border)",
-                          borderRadius: "6px",
-                          fontSize: 12,
-                        }}
-                        labelStyle={{ color: "var(--color-foreground)", fontWeight: 500 }}
-                      />
-                      <Legend wrapperStyle={{ fontSize: 12 }} />
-                      {(selectedCrop === "all" || selectedCrop === "soja") && (
-                        <Line
-                          type="monotone"
-                          dataKey="soja"
-                          name="Soja"
-                          stroke="var(--color-primary)"
-                          strokeWidth={2}
-                          dot={{ fill: "var(--color-primary)" }}
-                          connectNulls
-                        />
-                      )}
-                      {(selectedCrop === "all" || selectedCrop === "maiz") && (
-                        <Line
-                          type="monotone"
-                          dataKey="maiz"
-                          name="Maíz"
-                          stroke="var(--color-accent)"
-                          strokeWidth={2}
-                          dot={{ fill: "var(--color-accent)" }}
-                          connectNulls
-                        />
-                      )}
-                      {(selectedCrop === "all" || selectedCrop === "trigo") && (
-                        <Line
-                          type="monotone"
-                          dataKey="trigo"
-                          name="Trigo"
-                          stroke="var(--color-chart-3)"
-                          strokeWidth={2}
-                          dot={{ fill: "var(--color-chart-3)" }}
-                          connectNulls
-                        />
-                      )}
-                      <Line
-                        type="monotone"
-                        dataKey="predicted"
-                        name="Predicción ML"
-                        stroke="var(--color-chart-4)"
-                        strokeWidth={2}
-                        strokeDasharray="5 5"
-                        dot={{ fill: "var(--color-chart-4)", r: 6 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Summary Cards */}
-            <div className="grid gap-4 md:grid-cols-3">
-              <Card className="border-border/60">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Rendimiento Promedio (5 años)
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {loading ? (
-                    <>
-                      <Skeleton className="h-8 w-24 mb-2" />
-                      <Skeleton className="h-4 w-32" />
-                    </>
-                  ) : (
-                    <>
-                      <div className="text-2xl font-bold font-mono text-foreground">5.2 t/ha</div>
-                      <p className="mt-1 flex items-center text-xs font-medium text-accent">
-                        <TrendingUp className="mr-1 h-3 w-3" />
-                        +8.3% vs período anterior
-                      </p>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-              <Card className="border-border/60">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Mejor Año
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {loading ? (
-                    <>
-                      <Skeleton className="h-8 w-16 mb-2" />
-                      <Skeleton className="h-4 w-28" />
-                    </>
-                  ) : (
-                    <>
-                      <div className="text-2xl font-bold font-mono text-foreground">2025</div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Maíz: 9.6 t/ha (récord)
-                      </p>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-              <Card className="border-border/60">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Predicción 2026
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {loading ? (
-                    <>
-                      <Skeleton className="h-8 w-20 mb-2" />
-                      <Skeleton className="h-4 w-24" />
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <div className="text-2xl font-bold font-mono text-foreground">+4.2%</div>
-                        <Badge className="bg-accent/20 text-accent border-accent/30">
-                          <Cpu className="mr-1 h-3 w-3" />
-                          ML
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Confianza: 94%
-                      </p>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          {/* SOIL TAB */}
-          <TabsContent value="soil" className="space-y-6">
-            <div className="flex items-center gap-2">
-              <Select value={selectedLot ?? ""} onValueChange={setSelectedLot}>
-                <SelectTrigger className="w-[200px] bg-card">
-                  <SelectValue placeholder="Seleccionar lote" />
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="analytics-farm">Granja</Label>
+              <Select
+                value={selectedFarmId}
+                onValueChange={setSelectedFarmId}
+                disabled={loadingLots || farms.length === 0}
+              >
+                <SelectTrigger id="analytics-farm" className="bg-card">
+                  <SelectValue placeholder="Seleccionar granja" />
                 </SelectTrigger>
                 <SelectContent>
-                  {lots.map((lot) => (
-                    <SelectItem key={lot.id} value={lot.id}>
-                      {lot.name}
+                  {farms.map((farm) => (
+                    <SelectItem key={farm.id} value={farm.id}>
+                      {farm.name}
                     </SelectItem>
                   ))}
-                  {lots.length === 0 && (
+                  {farms.length === 0 && (
                     <SelectItem value="_none" disabled>
-                      Sin lotes registrados
+                      Sin granjas registradas
                     </SelectItem>
                   )}
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {loading || !soilMetrics ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <Card key={i} className="border-border/60">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <Skeleton className="h-4 w-24" />
-                      <Skeleton className="h-4 w-4" />
-                    </CardHeader>
-                    <CardContent>
-                      <Skeleton className="h-10 w-20 mb-2" />
-                      <Skeleton className="h-6 w-16 mb-2" />
-                      <Skeleton className="h-3 w-32 mb-1" />
-                      <Skeleton className="h-3 w-24" />
-                    </CardContent>
-                  </Card>
-                ))
-              ) : (
-                soilMetrics.map((metric) => {
-                  const Icon = iconMap[metric.id] || FlaskConical
-                  return (
-                    <Card key={metric.id} className="border-border/60">
-                      <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-foreground">
-                          {metric.title}
-                        </CardTitle>
-                        <Icon className="h-4 w-4 text-muted-foreground" />
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-3xl font-bold font-mono text-foreground">{metric.value}</span>
-                          <span className="text-lg text-muted-foreground">
-                            {metric.unit}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between">
-                          <Badge
-                            variant="outline"
-                            className={statusColors[metric.status]}
-                          >
-                            {metric.status}
-                          </Badge>
-                        </div>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {metric.description}
-                        </p>
-                        <p className="mt-1 text-xs font-medium text-accent">{metric.trend}</p>
-                      </CardContent>
-                    </Card>
-                  )
-                })
-              )}
+            <div className="space-y-2">
+              <Label htmlFor="analytics-lot">Lote</Label>
+              <Select
+                value={selectedLotId}
+                onValueChange={setSelectedLotId}
+                disabled={
+                  loadingLots ||
+                  !selectedFarmId ||
+                  lotsForSelectedFarm.length === 0
+                }
+              >
+                <SelectTrigger id="analytics-lot" className="bg-card">
+                  <SelectValue placeholder="Seleccionar lote" />
+                </SelectTrigger>
+                <SelectContent>
+                  {lotsForSelectedFarm.map((lot) => (
+                    <SelectItem key={lot.id} value={lot.id}>
+                      {lot.name}
+                    </SelectItem>
+                  ))}
+                  {lotsForSelectedFarm.length === 0 && (
+                    <SelectItem value="_none" disabled>
+                      Sin lotes para esta granja
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
-          </TabsContent>
+          </div>
+        </CardHeader>
 
-          {/* PREDICTIONS TAB */}
-          <TabsContent value="predictions" className="space-y-6">
-            {loading || !ndviTrend ? (
-              <ChartCardSkeleton />
-            ) : (
-              <Card className="border-border/60">
-                <CardHeader>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-md bg-accent/20">
-                      <Cpu className="h-5 w-5 text-accent" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-foreground">Tendencia NDVI vs Óptimo</CardTitle>
-                      <CardDescription>
-                        Comparación del índice de vegetación actual con valores óptimos
-                      </CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={350}>
-                    <AreaChart data={ndviTrend}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                      <XAxis
-                        dataKey="month"
-                        tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <YAxis
-                        tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }}
-                        tickLine={false}
-                        axisLine={false}
-                        domain={[0, 1]}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "var(--color-card)",
-                          border: "1px solid var(--color-border)",
-                          borderRadius: "6px",
-                          fontSize: 12,
-                        }}
-                      />
-                      <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Area
-                        type="monotone"
-                        dataKey="optimal"
-                        name="NDVI Óptimo"
-                        stroke="var(--color-primary)"
-                        fill="var(--color-primary)"
-                        fillOpacity={0.1}
-                        strokeWidth={2}
-                        strokeDasharray="5 5"
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="ndvi"
-                        name="NDVI Actual"
-                        stroke="var(--color-accent)"
-                        fill="var(--color-accent)"
-                        fillOpacity={0.2}
-                        strokeWidth={2}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            )}
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card className="border-border/60">
-                <CardHeader>
-                  <CardTitle className="text-base text-foreground">Modelo de Predicción</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Algoritmo</span>
-                    <span className="text-sm font-medium text-foreground">Random Forest + CNN</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Datos de Entrenamiento</span>
-                    <span className="text-sm font-mono font-medium text-foreground">15,000+ imágenes</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Precisión</span>
-                    <span className="text-sm font-mono font-medium text-accent">94.2%</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Última actualización</span>
-                    <span className="text-sm font-medium text-foreground">Hace 2 horas</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-border/60">
-                <CardHeader>
-                  <CardTitle className="text-base text-foreground">Fuentes de Datos</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex items-center gap-3 rounded-md border border-border p-3">
-                    <div className="h-2 w-2 rounded-full bg-accent" />
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Sentinel-2</p>
-                      <p className="text-xs text-muted-foreground">
-                        Imágenes multiespectrales cada 5 días
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 rounded-md border border-border p-3">
-                    <div className="h-2 w-2 rounded-full bg-chart-3" />
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Estaciones Meteorológicas</p>
-                      <p className="text-xs text-muted-foreground">
-                        Datos climáticos en tiempo real
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 rounded-md border border-border p-3">
-                    <div className="h-2 w-2 rounded-full bg-chart-4" />
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Sensores IoT</p>
-                      <p className="text-xs text-muted-foreground">
-                        Humedad y temperatura del suelo
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+        <CardContent>
+          {loadingLots || loadingHistory ? (
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-[360px] w-full" />
             </div>
-          </TabsContent>
-        </Tabs>
-      </div>
+          ) : showEmptyLots ? (
+            <div className="flex min-h-[360px] items-center justify-center rounded-lg border border-dashed border-border/70 bg-muted/20 p-6 text-center">
+              <div className="space-y-2">
+                <p className="font-medium text-foreground">
+                  No hay granjas ni lotes cargados.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Crea al menos un lote para ver el historial de estimaciones.
+                </p>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="flex min-h-[360px] items-center justify-center rounded-lg border border-dashed border-destructive/40 bg-destructive/5 p-6 text-center">
+              <div className="space-y-2">
+                <p className="font-medium text-foreground">{error}</p>
+                <p className="text-sm text-muted-foreground">
+                  Revisa la tabla `plot_prediction` y la sesion de Supabase.
+                </p>
+              </div>
+            </div>
+          ) : showEmptyHistory ? (
+            <div className="flex min-h-[360px] items-center justify-center rounded-lg border border-dashed border-border/70 bg-muted/20 p-6 text-center">
+              <div className="space-y-2">
+                <p className="font-medium text-foreground">
+                  No hay estimaciones guardadas para este lote.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Cuando existan filas en `plot_prediction`, apareceran en este
+                  grafico segun `created_at`.
+                </p>
+              </div>
+            </div>
+          ) : !selectedLot || !history ? (
+            <div className="flex min-h-[360px] items-center justify-center rounded-lg border border-dashed border-border/70 bg-muted/20 p-6 text-center">
+              <div className="space-y-2">
+                <p className="font-medium text-foreground">
+                  Selecciona un lote para ver el historial.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  {selectedLot.farmName} / {selectedLot.name}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {history.length} estimacion{history.length === 1 ? "" : "es"} registradas
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Cada punto muestra el cambio porcentual respecto de la estimacion anterior.
+                </p>
+              </div>
+
+              <div className="h-[360px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={chartData}
+                    margin={{ top: 12, right: 16, left: 8, bottom: 8 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      className="stroke-border"
+                    />
+                    <XAxis
+                      dataKey="createdAt"
+                      tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }}
+                      tickFormatter={formatAxisDate}
+                      tickLine={false}
+                      axisLine={false}
+                      minTickGap={24}
+                    />
+                    <YAxis
+                      tick={{ fill: "var(--color-muted-foreground)", fontSize: 12 }}
+                      tickFormatter={(value: number | string) => formatAxisKgHa(value)}
+                      tickLine={false}
+                      axisLine={false}
+                      width={72}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "var(--color-card)",
+                        border: "1px solid var(--color-border)",
+                        borderRadius: "6px",
+                        fontSize: 12,
+                      }}
+                      formatter={(
+                        value: number | string | Array<number | string>,
+                      ) => [
+                        formatKgHa(normalizeChartNumber(value)),
+                        "Estimacion",
+                      ]}
+                      labelFormatter={(label: string | number) =>
+                        typeof label === "string"
+                          ? formatTooltipDate(label)
+                          : String(label)
+                      }
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="predictedKgHa"
+                      name="Estimacion"
+                      stroke="var(--color-primary)"
+                      strokeWidth={3}
+                      dot={{
+                        fill: "var(--color-primary)",
+                        stroke: "var(--color-card)",
+                        strokeWidth: 2,
+                        r: history.length === 1 ? 5 : 4,
+                      }}
+                      activeDot={{ r: 6, fill: "var(--color-primary)" }}
+                    >
+                      <LabelList
+                        dataKey="changeLabel"
+                        position="top"
+                        offset={10}
+                        fill="var(--color-muted-foreground)"
+                        fontSize={11}
+                      />
+                    </Line>
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 

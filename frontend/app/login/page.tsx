@@ -48,6 +48,7 @@ export default function LoginPage() {
     const supabase = createClient()
 
     if (mode === "login") {
+      // --- LÓGICA DE LOGIN (Sin cambios) ---
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) {
         setError(translateAuthError(error.message))
@@ -58,49 +59,40 @@ export default function LoginPage() {
       if (!farms || farms.length === 0) {
         router.push("/onboarding")
       } else {
-        router.push("/")
+        router.push("/lotes")
       }
       router.refresh()
-    } else {
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      })
-      let payload: { error?: string } = {}
-      try {
-        payload = (await res.json()) as { error?: string }
-      } catch {
-        /* ignore */
-      }
-      if (!res.ok) {
-        setError(
-          typeof payload.error === "string"
-            ? payload.error
-            : "No se pudo crear la cuenta.",
-        )
-        setLoading(false)
-        return
-      }
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+    } else {
+      // --- NUEVA LÓGICA DE REGISTRO ---
+      
+      // 1. Usamos supabase.auth.signUp en lugar de fetch('/api/auth/register')
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
       })
-      if (signInError) {
-        setError(
-          "Cuenta creada, pero no pudimos iniciar sesión automáticamente. " +
-            translateAuthError(signInError.message),
-        )
+
+      // 2. Manejamos los errores del registro
+      if (signUpError) {
+        setError(translateAuthError(signUpError.message))
         setLoading(false)
         return
       }
 
+      // 3. Verificamos si la cuenta se creó pero requiere confirmación (aunque lo desactivamos, es buena práctica)
+      if (data.user && data.user.identities && data.user.identities.length === 0) {
+         setError("Este correo ya está registrado. Intenta iniciar sesión.")
+         setLoading(false)
+         return;
+      }
+
+      // 4. Si llegamos aquí, el usuario se registró y (como desactivamos la confirmación) ya debería tener sesión.
+      // Solo nos queda redirigirlo.
       const { data: farms } = await supabase.from("farms").select("id").limit(1)
       if (!farms || farms.length === 0) {
         router.push("/onboarding")
       } else {
-        router.push("/")
+        router.push("/lotes")
       }
       router.refresh()
     }

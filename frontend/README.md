@@ -52,6 +52,8 @@ La página **Configuración** llama a la Edge Function **`delete-account`** para
 
 Sin el secret, la función responde error y el botón mostrará un mensaje acorde.
 
+Si ves un error genérico del estilo «Edge Function returned a non-2xx status code» o fallo de red al invocar la función, suele ser que **`delete-account` no está desplegada** en ese proyecto o que falta el secret anterior. La UI de Configuración añade una pista que remite a esta sección.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More
