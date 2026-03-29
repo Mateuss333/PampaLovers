@@ -241,6 +241,7 @@ export const SatelliteMap = forwardRef<SatelliteMapHandle, SatelliteMapProps>(
 
         const [lonC, latC] = polygonCentroidLonLat(plot.polygon)
         const label = escapeHtml(plot.name)
+        // iconSize pequeño: el tamaño real lo define CSS (.satellite-plot-label-icon) para no recortar el texto.
         const icon = L.divIcon({
           className: "satellite-plot-label-icon",
           html: `<div class="satellite-plot-label-chip">${label}</div>`,

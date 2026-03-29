@@ -338,7 +338,7 @@ export default function SatelitePage() {
                                     <li
                                       key={lot.id}
                                       className={cn(
-                                        "flex items-center gap-2 rounded-md px-1.5 py-1",
+                                        "flex items-start gap-2 rounded-md px-1.5 py-1",
                                         mappableLot && "hover:bg-muted/80",
                                       )}
                                     >
@@ -359,17 +359,21 @@ export default function SatelitePage() {
                                         disabled={!mappableLot}
                                         onClick={() => mappableLot && mapRef.current?.flyToLot(lot.id)}
                                         className={cn(
-                                          "flex min-w-0 flex-1 items-center gap-2 text-left",
+                                          "flex min-w-0 flex-1 gap-2 text-left",
                                           !mappableLot && "cursor-not-allowed opacity-50",
                                         )}
                                       >
                                         <span
-                                          className={`h-2.5 w-2.5 shrink-0 rounded-sm ${cropColors[lot.crop] || "bg-muted"}`}
+                                          className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-sm ${cropColors[lot.crop] || "bg-muted"}`}
                                         />
-                                        <span className="truncate text-sm font-medium text-foreground">
-                                          {lot.name}
+                                        <span className="min-w-0 flex-1 space-y-0.5">
+                                          <span className="block break-words text-sm font-medium text-foreground">
+                                            {lot.name}
+                                          </span>
+                                          <span className="block break-words text-xs text-muted-foreground">
+                                            {lot.crop}
+                                          </span>
                                         </span>
-                                        <span className="truncate text-xs text-muted-foreground">{lot.crop}</span>
                                       </button>
                                       <Button
                                         type="button"

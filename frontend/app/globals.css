@@ -129,15 +129,22 @@
 .leaflet-container .satellite-plot-label-icon {
   background: transparent !important;
   border: none !important;
+  /* divIcon usa iconSize en px (p. ej. [1,1]); Leaflet aplica ancho/alto inline y el chip
+     quedaba en ~1px — casi todo el nombre quedaba oculto. */
+  width: max-content !important;
+  min-width: max-content !important;
+  height: auto !important;
+  overflow: visible !important;
 }
 
 .leaflet-container .satellite-plot-label-chip {
   position: relative;
+  display: block;
   transform: translate(-50%, -50%);
-  max-width: 9rem;
-  padding: 2px 8px;
+  max-width: 14rem;
+  padding: 3px 10px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.25;
   text-align: center;
