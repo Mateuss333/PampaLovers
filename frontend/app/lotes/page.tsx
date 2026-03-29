@@ -510,7 +510,7 @@ export default function LotesPage() {
                     <TableHead className="font-semibold text-foreground">Estado</TableHead>
                     <TableHead className="text-right font-semibold text-foreground">NDVI</TableHead>
                     <TableHead className="text-right font-semibold text-foreground">
-                      Rend. Predicho
+                      Estimado ML (kg/ha)
                     </TableHead>
                     <TableHead className="w-[88px] min-w-[88px]" />
                   </TableRow>
@@ -556,7 +556,11 @@ export default function LotesPage() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right font-mono text-foreground tabular-nums">
-                          {lot.predictedYield ? `${lot.predictedYield.toFixed(1)} t/ha` : "—"}
+                          {lot.mlPredictedKgHa != null
+                            ? `${lot.mlPredictedKgHa.toLocaleString("es-AR", {
+                                maximumFractionDigits: 1,
+                              })} kg/ha`
+                            : "—"}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center justify-end gap-1">

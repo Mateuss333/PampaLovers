@@ -26,7 +26,7 @@ Copiar `backend/.env.example` a `backend/.env` y completar con los valores del p
 
 Si un `select` devuelve filas vacías pero en el Table Editor hay datos, revisar **políticas RLS** para el rol que usa tu clave (`anon` vs `service_role`). La clave `service_role` solo debe usarse en el servidor, nunca en el cliente.
 
-El dashboard (rendimiento por cultivo) espera la tabla `plot_prediction` definida en `supabase/migrations/202603280003_create_plot_prediction.sql`; sin esa migración aplicada, la consulta puede fallar y el gráfico quedará vacío.
+La tabla `plot_prediction` enlaza cada lote (`plot_id`) con `ml_predicted_kg_ha` (predicción ML en kg/ha). Las migraciones `202603280003_create_plot_prediction.sql` y `202603281012_plot_prediction_ml_kg_ha.sql` crean o alinean esa columna; la pestaña Lotes y el rendimiento por cultivo leen ese valor (el agregado convierte a t/ha para mezclar con histórico).
 
 El mapa satelital guarda el contorno en la columna `polygon` de `plots` (`supabase/migrations/202603280005_add_plots_polygon.sql`). Hay que aplicar esa migración en el proyecto de Supabase para que los nuevos lotes persistan el polígono real.
 

@@ -116,7 +116,8 @@ export interface Lot {
   area: number
   status: "Sembrado" | "Crecimiento" | "Cosechado" | "Barbecho"
   ndvi: number
-  predictedYield: number | null
+  /** Predicción ML desde `plot_prediction.ml_predicted_kg_ha` (kg/ha). */
+  mlPredictedKgHa: number | null
   lastUpdated: string
   polygon?: LotPolygon
   /** true si no hay `polygon` en BD y se usó cuadrado por ubicación + superficie (lotes viejos). */
@@ -254,7 +255,7 @@ function mapPlotToLot(plot: DbPlotWithFarm): Lot {
     area: Number(plot.area_ha) || 0,
     status: plot.status,
     ndvi: Number(plot.ndvi_index) || 0,
-    predictedYield: null,
+    mlPredictedKgHa: null,
     lastUpdated: plot.updated_at,
     ...(polygon
       ? {
@@ -322,18 +323,34 @@ function blendMlAndHistorical(
   return null
 }
 
-function parseMlPredicted(
-  embed:
-    | { ml_predicted_tn_ha: number | string | null }
-    | { ml_predicted_tn_ha: number | string | null }[]
-    | null
-    | undefined,
-): number | null {
-  if (embed == null) return null
-  const row = Array.isArray(embed) ? embed[0] : embed
-  if (!row || row.ml_predicted_tn_ha == null) return null
-  const v = Number(row.ml_predicted_tn_ha)
+/** Valida `ml_predicted_kg_ha` desde la fila de `plot_prediction`. */
+function parseMlPredictedKgHa(raw: unknown): number | null {
+  if (raw == null) return null
+  const v = Number(raw)
   return Number.isFinite(v) && v >= 0 ? v : null
+}
+
+async function fetchMlPredictedKgHaByPlotIds(
+  supabase: SupabaseClient,
+  plotIds: string[],
+): Promise<Map<string, number | null>> {
+  const map = new Map<string, number | null>()
+  if (plotIds.length === 0) return map
+
+  const { data, error } = await supabase
+    .from("plot_prediction")
+    .select("plot_id, ml_predicted_kg_ha")
+    .in("plot_id", plotIds)
+
+  if (error) throw error
+  for (const row of data ?? []) {
+    const id = (row as { plot_id: string }).plot_id
+    const kg = parseMlPredictedKgHa(
+      (row as { ml_predicted_kg_ha: unknown }).ml_predicted_kg_ha,
+    )
+    map.set(id, kg)
+  }
+  return map
 }
 
 function sortCropLabels(crops: string[]): string[] {
@@ -384,7 +401,15 @@ export async function fetchLots(): Promise<Lot[]> {
     .order("created_at", { ascending: false })
 
   if (error) throw error
-  return (data ?? []).map((row) => mapPlotToLot(row as DbPlotWithFarm))
+  const lots = (data ?? []).map((row) => mapPlotToLot(row as DbPlotWithFarm))
+  const pred = await fetchMlPredictedKgHaByPlotIds(
+    supabase,
+    lots.map((l) => l.id),
+  )
+  return lots.map((l) => ({
+    ...l,
+    mlPredictedKgHa: pred.get(l.id) ?? null,
+  }))
 }
 
 export async function getLotById(id: string): Promise<Lot | null> {
@@ -399,8 +424,10 @@ export async function getLotById(id: string): Promise<Lot | null> {
     .in("farm_id", farmIds)
     .maybeSingle()
 
-  if (error) return null
-  return mapPlotToLot(data)
+  if (error || !data) return null
+  const lot = mapPlotToLot(data as DbPlotWithFarm)
+  const pred = await fetchMlPredictedKgHaByPlotIds(supabase, [id])
+  return { ...lot, mlPredictedKgHa: pred.get(id) ?? null }
 }
 
 /** Fila completa de `plots` solo si el lote pertenece a una granja del usuario. */
@@ -990,20 +1017,19 @@ export async function getYieldComparisonByCrop(): Promise<YieldByCrop[]> {
 
   const rows = (plots ?? []) as PlotRow[]
 
-  const predByPlotId = new Map<string, { ml_predicted_tn_ha: number | null }>()
+  /** Rendimiento ML en t/ha (histórico ya está en t/ha vía yield_unit). */
+  const predMlTnHaByPlotId = new Map<string, number | null>()
   if (rows.length > 0) {
     const ids = rows.map((r) => r.id)
-    const { data: preds, error: predErr } = await supabase
-      .from("plot_prediction")
-      .select("plot_id, ml_predicted_tn_ha")
-      .in("plot_id", ids)
-
-    if (!predErr && preds) {
-      for (const row of preds) {
-        predByPlotId.set(row.plot_id, {
-          ml_predicted_tn_ha: row.ml_predicted_tn_ha,
-        })
-      }
+    let predKg = new Map<string, number | null>()
+    try {
+      predKg = await fetchMlPredictedKgHaByPlotIds(supabase, ids)
+    } catch {
+      // Tabla o columna ausente: seguir solo con histórico
+    }
+    for (const id of ids) {
+      const kg = predKg.get(id) ?? null
+      predMlTnHaByPlotId.set(id, kg == null ? null : kg / 1000)
     }
   }
 
@@ -1022,7 +1048,7 @@ export async function getYieldComparisonByCrop(): Promise<YieldByCrop[]> {
     const prevRows = plot.plot_previous_yields ?? []
     const H = weightedHistoricalTnHa(prevRows)
     const actualOne = lastHarvestTnHa(prevRows)
-    const ml = parseMlPredicted(predByPlotId.get(plot.id) ?? null)
+    const ml = predMlTnHaByPlotId.get(plot.id) ?? null
     const prediction = blendMlAndHistorical(ml, H)
 
     let acc = byCrop.get(crop)
