@@ -29,6 +29,20 @@ La ruta `/satelite` usa [Leaflet](https://leafletjs.com/) con teselas públicas.
 
 Leaflet se carga en el cliente con import dinámico dentro de `components/satellite-map.tsx`.
 
+El formulario **Nuevo lote** (`components/lot-polygon-map-picker.tsx`) usa las mismas capas satelital (Esri) y calles (OSM), con vista satelital por defecto.
+
+## Registro (Supabase)
+
+El formulario de **Crear cuenta** usa la ruta interna `POST /api/auth/register`, que registra usuarios con la **Admin API** (`auth.admin.createUser`) y evita el *rate limit* del endpoint público `/auth/v1/signup`.
+
+En `frontend/.env.local` (y en el hosting, p. ej. Vercel) configurá **solo en servidor**:
+
+- `SUPABASE_SERVICE_ROLE_KEY` — la *service role* del proyecto (Dashboard → Project Settings → API). **No** uses el prefijo `NEXT_PUBLIC_`; no la subas al repositorio.
+
+Sin esa variable, el registro responde error de configuración. La clave ya la usás para Edge Functions; reutilizá el mismo valor en el entorno de Next.js.
+
+Si preferís no usar service role en Next, podés volver al flujo solo con `signUp` en cliente y ajustar límites en **Authentication** del dashboard de Supabase.
+
 ## Eliminar cuenta (Supabase)
 
 La página **Configuración** llama a la Edge Function **`delete-account`** para borrar el usuario de Auth con `auth.admin.deleteUser` (requiere **service role** en el servidor, no en el cliente).

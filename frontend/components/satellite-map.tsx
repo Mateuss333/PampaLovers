@@ -15,12 +15,13 @@ import type {
 } from "leaflet"
 import "leaflet/dist/leaflet.css"
 
-const OSM_TILES = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-const OSM_ATTRIBUTION =
+export const OSM_TILES =
+  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+export const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-const ESRI_TILES =
+export const ESRI_TILES =
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-const ESRI_ATTRIBUTION =
+export const ESRI_ATTRIBUTION =
   "Tiles &copy; Esri &mdash; Esri, Maxar, Earthstar Geographics, GIS User Community"
 
 /** Centro aproximado región pampeana (demo hackathon) */

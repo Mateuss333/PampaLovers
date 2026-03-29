@@ -1,16 +1,19 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import type { LayerGroup, Map as LeafletMap } from "leaflet"
+import type { LayerGroup, Map as LeafletMap, TileLayer } from "leaflet"
+import { Map as MapIcon, Satellite } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { PAMPA_DEMO_CENTER } from "@/components/satellite-map"
+import {
+  ESRI_ATTRIBUTION,
+  ESRI_TILES,
+  OSM_ATTRIBUTION,
+  OSM_TILES,
+  PAMPA_DEMO_CENTER,
+} from "@/components/satellite-map"
 import "leaflet/dist/leaflet.css"
 
 const MAX_POINTS = 4
-
-const OSM_TILES = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-const OSM_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 
 export type LngLatTuple = [number, number]
 
@@ -41,9 +44,15 @@ export function LotPolygonMapPicker({
   const mapRef = useRef<LeafletMap | null>(null)
   const groupRef = useRef<LayerGroup | null>(null)
   const leafletRef = useRef<typeof import("leaflet") | null>(null)
+  const layerRef = useRef<TileLayer | null>(null)
+  const layersRef = useRef<{
+    streets: TileLayer
+    satellite: TileLayer
+  } | null>(null)
   const pointsRef = useRef(points)
   const onPointsChangeRef = useRef(onPointsChange)
   const [mapReady, setMapReady] = useState(false)
+  const [mapType, setMapType] = useState<"satellite" | "streets">("satellite")
 
   pointsRef.current = points
   onPointsChangeRef.current = onPointsChange
@@ -64,7 +73,13 @@ export function LotPolygonMapPicker({
         zoomControl: true,
       })
 
-      L.tileLayer(OSM_TILES, { attribution: OSM_ATTRIBUTION }).addTo(map)
+      const streets = L.tileLayer(OSM_TILES, { attribution: OSM_ATTRIBUTION })
+      const satellite = L.tileLayer(ESRI_TILES, {
+        attribution: ESRI_ATTRIBUTION,
+      })
+      layersRef.current = { streets, satellite }
+      satellite.addTo(map)
+      layerRef.current = satellite
 
       const fg = L.layerGroup().addTo(map)
       groupRef.current = fg
@@ -90,8 +105,24 @@ export function LotPolygonMapPicker({
       mapRef.current = null
       groupRef.current = null
       leafletRef.current = null
+      layerRef.current = null
+      layersRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    const map = mapRef.current
+    const layers = layersRef.current
+    const current = layerRef.current
+    if (!mapReady || !map || !layers || !current) return
+
+    const next = mapType === "satellite" ? layers.satellite : layers.streets
+    if (next === current) return
+
+    map.removeLayer(current)
+    next.addTo(map)
+    layerRef.current = next
+  }, [mapType, mapReady])
 
   useEffect(() => {
     if (!mapReady) return
@@ -135,6 +166,30 @@ export function LotPolygonMapPicker({
 
   return (
     <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={mapType === "satellite" ? "default" : "outline"}
+          onClick={() => setMapType("satellite")}
+          className="gap-2"
+          aria-pressed={mapType === "satellite"}
+        >
+          <Satellite className="h-4 w-4 shrink-0" aria-hidden />
+          Satelital
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={mapType === "streets" ? "default" : "outline"}
+          onClick={() => setMapType("streets")}
+          className="gap-2"
+          aria-pressed={mapType === "streets"}
+        >
+          <MapIcon className="h-4 w-4 shrink-0" aria-hidden />
+          Calles
+        </Button>
+      </div>
       <div
         ref={containerRef}
         className={className}

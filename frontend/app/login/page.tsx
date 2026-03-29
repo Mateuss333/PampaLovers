@@ -30,6 +30,7 @@ export default function LoginPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (loading) return
     setError(null)
     setMessage(null)
 
@@ -61,19 +62,47 @@ export default function LoginPage() {
       }
       router.refresh()
     } else {
-      const { error, data } = await supabase.auth.signUp({ email, password })
-      if (error) {
-        setError(translateAuthError(error.message))
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      })
+      let payload: { error?: string } = {}
+      try {
+        payload = (await res.json()) as { error?: string }
+      } catch {
+        /* ignore */
+      }
+      if (!res.ok) {
+        setError(
+          typeof payload.error === "string"
+            ? payload.error
+            : "No se pudo crear la cuenta.",
+        )
         setLoading(false)
         return
       }
-      if (data.session) {
-        router.push("/onboarding")
-        router.refresh()
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+      if (signInError) {
+        setError(
+          "Cuenta creada, pero no pudimos iniciar sesión automáticamente. " +
+            translateAuthError(signInError.message),
+        )
+        setLoading(false)
         return
       }
-      setMessage("Cuenta creada. Revisá tu correo para confirmar el registro.")
-      setLoading(false)
+
+      const { data: farms } = await supabase.from("farms").select("id").limit(1)
+      if (!farms || farms.length === 0) {
+        router.push("/onboarding")
+      } else {
+        router.push("/")
+      }
+      router.refresh()
     }
   }
 
@@ -197,7 +226,19 @@ export default function LoginPage() {
   )
 }
 
+const RATE_LIMIT_HINT =
+  "Hubo demasiados intentos en poco tiempo. Esperá unos minutos antes de volver a intentar. Si tu proyecto usa confirmación por correo, el límite también puede afectar el envío de emails."
+
 function translateAuthError(message: string): string {
+  const lower = message.toLowerCase()
+  if (
+    lower.includes("rate limit") ||
+    lower.includes("too many requests") ||
+    lower.includes("over_email_send")
+  ) {
+    return RATE_LIMIT_HINT
+  }
+
   const translations: Record<string, string> = {
     "Invalid login credentials": "Credenciales inválidas. Verificá tu email y contraseña.",
     "Email not confirmed": "Tu email no fue confirmado. Revisá tu bandeja de entrada.",
@@ -205,6 +246,9 @@ function translateAuthError(message: string): string {
     "Password should be at least 6 characters": "La contraseña debe tener al menos 6 caracteres.",
     "Signup requires a valid password": "Se requiere una contraseña válida.",
     "Unable to validate email address: invalid format": "El formato del email no es válido.",
+    "email rate limit exceeded": RATE_LIMIT_HINT,
+    "Email rate limit exceeded": RATE_LIMIT_HINT,
+    over_email_send_rate_limit: RATE_LIMIT_HINT,
   }
   return translations[message] ?? message
 }
